@@ -279,6 +279,18 @@ def vs_reconstruct_from_2_horizontal_tiles(clip_tiles: ClipTiles,
 
 
 def _make_horizontal_blend_mask_akarin(width: int, height: int, overlap: int, base_w: int, weight: float) -> vs.VideoNode:
+    """Build a horizontal blend mask using akarin.Expr for tile seam blending.
+
+    For weight==0, generates a linear ramp from 0 to 255 over the 2×overlap transition zone.
+    For weight>0, generates a constant value (weight*255) in the transition zone.
+
+    :param width:   Mask width in pixels (= 2 × base_w).
+    :param height:  Mask height in pixels.
+    :param overlap: Half-width of the blending transition zone.
+    :param base_w:  Base tile width (centre of transition at x == base_w).
+    :param weight:  Blend weight in the transition zone [0, 1]. 0 = linear ramp.
+    :return:        GRAY8 mask clip.
+    """
     mask = core.std.BlankClip(width=width, height=height, format=vs.GRAY8)
 
     mask_val = int(round(weight * 255))
@@ -297,6 +309,17 @@ def _make_horizontal_blend_mask_akarin(width: int, height: int, overlap: int, ba
 
 
 def _make_vertical_blend_mask_akarin(width: int, height: int, overlap: int, base_h: int, weight: float) -> vs.VideoNode:
+    """Build a vertical blend mask using akarin.Expr for tile seam blending.
+
+    Analogous to _make_horizontal_blend_mask_akarin but operates on the Y axis.
+
+    :param width:   Mask width in pixels.
+    :param height:  Mask height in pixels (= 2 × base_h).
+    :param overlap: Half-height of the blending transition zone.
+    :param base_h:  Base tile height (centre of transition at y == base_h).
+    :param weight:  Blend weight in the transition zone [0, 1]. 0 = linear ramp.
+    :return:        GRAY8 mask clip.
+    """
     mask = core.std.BlankClip(width=width, height=height, format=vs.GRAY8)
 
     mask_val = int(round(weight * 255))
@@ -313,6 +336,18 @@ def _make_vertical_blend_mask_akarin(width: int, height: int, overlap: int, base
 
 
 def _blend_horizontal(left: vs.VideoNode, right: vs.VideoNode, overlap: int, base_w: int, weight: float) -> vs.VideoNode:
+    """Blend two horizontally adjacent tiles across their shared overlap zone.
+
+    Both tiles are padded to 2×base_w width and merged with a horizontal blend mask.
+    Falls back to std.StackHorizontal when overlap==0.
+
+    :param left:    Left tile clip.
+    :param right:   Right tile clip.
+    :param overlap: Overlap width in pixels.
+    :param base_w:  Base tile width (canvas = 2×base_w).
+    :param weight:  Blend weight; 0 = linear ramp, >0 = constant weight.
+    :return:        Merged clip of width 2×base_w.
+    """
     if overlap <= 0:
         return core.std.StackHorizontal([left, right])
 
@@ -334,6 +369,18 @@ def _blend_horizontal(left: vs.VideoNode, right: vs.VideoNode, overlap: int, bas
     return clip_merged
 
 def _blend_vertical(top: vs.VideoNode, bottom: vs.VideoNode, overlap: int, base_h: int, weight: float) -> vs.VideoNode:
+    """Blend two vertically adjacent tiles across their shared overlap zone.
+
+    Both tiles are padded to 2×base_h height and merged with a vertical blend mask.
+    Falls back to std.StackVertical when overlap==0.
+
+    :param top:     Top tile clip.
+    :param bottom:  Bottom tile clip.
+    :param overlap: Overlap height in pixels.
+    :param base_h:  Base tile height (canvas = 2×base_h).
+    :param weight:  Blend weight; 0 = linear ramp, >0 = constant weight.
+    :return:        Merged clip of height 2×base_h.
+    """
     if overlap <= 0:
         return core.std.StackVertical([top, bottom])
 

@@ -1,9 +1,23 @@
+"""
+-------------------------------------------------------------------------------
+Author: Dan64
+Date: 2024-04-20
+version:
+LastEditors: Dan64
+LastEditTime: 2026-04-30
+-------------------------------------------------------------------------------
+Description:
+-------------------------------------------------------------------------------
+Memory Manager for CMNET2
+"""
 import torch
-import warnings
+#import warnings
+import math
+from vsdeoldify.colormnet2.inference.kv_memory_store import KeyValueMemoryStore
+from vsdeoldify.colormnet2.model.memory_util import *
+import os, tempfile, datetime
 
-from vsdeoldify.colormnet.inference.kv_memory_store import KeyValueMemoryStore
-from vsdeoldify.colormnet.model.memory_util import *
-
+from vsdeoldify.colormnet2.colormnet2_logbuffer import log_warning as _buf_warning
 
 class MemoryManager:
     """
@@ -13,7 +27,7 @@ class MemoryManager:
     def __init__(self, config):
         self.hidden_dim = config['hidden_dim']
         self.top_k = config['top_k']
-
+        self.enable_retry = config['enable_retry']
         self.enable_long_term = config['enable_long_term']
         self.enable_long_term_usage = config['enable_long_term_count_usage']
         if self.enable_long_term:
@@ -33,6 +47,16 @@ class MemoryManager:
         self.work_mem = KeyValueMemoryStore(count_usage=self.enable_long_term)
         if self.enable_long_term:
             self.long_mem = KeyValueMemoryStore(count_usage=self.enable_long_term_usage)
+        self.perm_mem = KeyValueMemoryStore(count_usage=False)
+        self._perm_frame_count = 0
+
+        # Match metrics from the most recent match_memory call. Computed on EVERY
+        # call (independently of CSV logging). Read by external callers via
+        # ColorMNetRender2.get_last_match_metrics() to decide whether a retry
+        # with a DDColor reference is needed.
+        # NaN until the first match_memory call with perm_mem engaged.
+        self._last_mmsp = float('nan')  # mean_max_sim_perm
+        self._last_perm_share = float('nan')  # perm_share
 
         self.reset_config = True
 
@@ -51,6 +75,42 @@ class MemoryManager:
             self.num_prototypes = config['num_prototypes']
             self.max_long_elements = config['max_long_term_elements']
 
+    def add_permanent_memory(self, key, shrinkage, value, objects):
+        """
+        Adds key/value to permanent memory.
+        These frames are never removed or compressed.
+        """
+        # flatten spatial dimensions of the keys
+        key = key.flatten(start_dim=2)
+        if shrinkage is not None:
+            shrinkage = shrinkage.flatten(start_dim=2)
+        # value: (B, num_objects, CV, H, W) -> (num_objects, CV, H*W)
+        # to align with the format of work_mem.value[gi]: (num_objects, CV, N)
+        value = value[0]  # removes batch dim: (2, 512, 49, 63)
+        value = value.flatten(start_dim=2)  # -> (2, 512, 3087)
+        self.perm_mem.add(key, value, shrinkage, None, objects)
+        self._perm_frame_count += 1
+
+    def slide_permanent_memory(self, n_frames: int):
+        """
+        Removes the first n_frames reference frames (the oldest ones) from permanent memory.
+        Used to implement the sliding window on reference frames.
+        """
+        if not self.perm_mem.engaged():
+            return
+        # compute how many elements correspond to n_frames
+        # each frame occupies HW elements in dimension N
+        frame_size = self.perm_mem.k.shape[-1] // self._perm_frame_count
+        n = n_frames * frame_size
+        if self.perm_mem.size <= n:
+            return
+        self.perm_mem.k = self.perm_mem.k[:, :, n:]
+        if self.perm_mem.s is not None:
+            self.perm_mem.s = self.perm_mem.s[:, :, n:]
+        for gi in range(self.perm_mem.num_groups):
+            self.perm_mem.v[gi] = self.perm_mem.v[gi][:, :, n:]
+        self._perm_frame_count -= n_frames
+
     def _readout(self, affinity, v):
         # this function is for a single object group
         return v @ affinity
@@ -64,6 +124,8 @@ class MemoryManager:
         query_key = query_key.flatten(start_dim=2)
         selection = selection.flatten(start_dim=2) if selection is not None else None
 
+        perm_mem_size = self.perm_mem.size if self.perm_mem.engaged() else 0
+
         """
         Memory readout using keys
         """
@@ -74,25 +136,66 @@ class MemoryManager:
             memory_key = torch.cat([self.long_mem.key, self.work_mem.key], -1)
             shrinkage = torch.cat([self.long_mem.shrinkage, self.work_mem.shrinkage], -1)
 
+            if self.perm_mem.engaged():
+                memory_key = torch.cat([self.perm_mem.key, memory_key], -1)
+                shrinkage = torch.cat([self.perm_mem.shrinkage, shrinkage], -1)
+
             similarity = get_similarity(memory_key, shrinkage, query_key, selection)
-            work_mem_similarity = similarity[:, long_mem_size:]
-            long_mem_similarity = similarity[:, :long_mem_size]
+            work_mem_similarity = similarity[:, perm_mem_size + long_mem_size:]
+            long_mem_similarity = similarity[:, perm_mem_size:perm_mem_size + long_mem_size]
 
             # get the usage with the first group
             # the first group always have all the keys valid
+            long_v0 = self.long_mem.get_v_size(0)
+            if self.perm_mem.engaged():
+                perm_mem_similarity = similarity[:, :perm_mem_size]
+                similarity_for_softmax = torch.cat(
+                    [perm_mem_similarity, long_mem_similarity[:, -long_v0:], work_mem_similarity], 1)
+            else:
+                similarity_for_softmax = torch.cat(
+                    [long_mem_similarity[:, -long_v0:], work_mem_similarity], 1)
+
+            # Compute mmsp BEFORE the inplace softmax destroys similarity_for_softmax.
+            # This is computed on EVERY call (regardless of CSV logging) — the value
+            # is read by ColorMNetRender2.get_last_match_metrics().
+            if self.enable_retry:
+                with torch.no_grad():
+                    if perm_mem_size > 0:
+                        _mmsp = float(similarity_for_softmax[:, :perm_mem_size, :].max(dim=1).values.mean().item())
+                    else:
+                        _mmsp = float('nan')
+
             affinity, usage = do_softmax(
-                torch.cat([long_mem_similarity[:, -self.long_mem.get_v_size(0):], work_mem_similarity], 1),
+                similarity_for_softmax,
                 top_k=self.top_k, inplace=True, return_usage=True)
+
+            # Compute perm_share AFTER softmax. Store both metrics on self for the
+            # always-on retry-trigger path.
+            if self.enable_retry:
+                with torch.no_grad():
+                    if perm_mem_size > 0:
+                        _ps = float((affinity[:, :perm_mem_size, :].sum() / affinity.sum()).item())
+                    else:
+                        _ps = float('nan')
+                self._last_mmsp = _mmsp
+                self._last_perm_share = _ps
+
             affinity = [affinity]
 
             # compute affinity group by group as later groups only have a subset of keys
             for gi in range(1, num_groups):
                 if gi < self.long_mem.num_groups:
                     # merge working and lt similarities before softmax
-                    affinity_one_group = do_softmax(
-                        torch.cat([long_mem_similarity[:, -self.long_mem.get_v_size(gi):],
-                                   work_mem_similarity[:, -self.work_mem.get_v_size(gi):]], 1),
-                        top_k=self.top_k, inplace=True)
+                    long_gi_sim = long_mem_similarity[:, -self.long_mem.get_v_size(gi):]
+                    work_gi_sim = work_mem_similarity[:, -self.work_mem.get_v_size(gi):]
+                    if self.perm_mem.engaged() and gi < self.perm_mem.num_groups:
+                        affinity_one_group = do_softmax(
+                            torch.cat([perm_mem_similarity, long_gi_sim, work_gi_sim], 1),
+                            top_k=self.top_k, inplace=True)
+                    else:
+                        affinity_one_group = do_softmax(
+                            torch.cat([long_gi_sim, work_gi_sim], 1),
+                            top_k=self.top_k, inplace=True)
                 else:
                     # no long-term memory for this group
                     affinity_one_group = do_softmax(work_mem_similarity[:, -self.work_mem.get_v_size(gi):],
@@ -103,44 +206,106 @@ class MemoryManager:
             for gi, gv in enumerate(self.work_mem.value):
                 # merge the working and lt values before readout
                 if gi < self.long_mem.num_groups:
-                    all_memory_value.append(torch.cat([self.long_mem.value[gi], self.work_mem.value[gi]], -1))
+                    merged = torch.cat([self.long_mem.value[gi], self.work_mem.value[gi]], -1)
                 else:
-                    all_memory_value.append(gv)
+                    merged = gv
+                # prepend perm_mem values so they align with perm_mem keys in the affinity
+                if self.perm_mem.engaged() and gi < self.perm_mem.num_groups:
+                    merged = torch.cat([self.perm_mem.value[gi], merged], -1)
+                all_memory_value.append(merged)
 
             """
             Record memory usage for working and long-term memory
             """
             # ignore the index return for long-term memory
-            work_usage = usage[:, long_mem_size:]
+            # usage has shape [..., perm_mem_size + long_v0 + work_size]
+            work_usage = usage[:, perm_mem_size + long_mem_size:]
             self.work_mem.update_usage(work_usage.flatten())
 
             if self.enable_long_term_usage:
-                # ignore the index return for working memory
-                long_usage = usage[:, :long_mem_size]
+                # ignore the index return for working memory and perm_mem
+                long_usage = usage[:, perm_mem_size:perm_mem_size + long_mem_size]
                 self.long_mem.update_usage(long_usage.flatten())
         else:
             # No long-term memory
-            similarity = get_similarity(self.work_mem.key, self.work_mem.shrinkage, query_key, selection)
+            if self.perm_mem.engaged():
+                combined_key = torch.cat([self.perm_mem.key, self.work_mem.key], -1)
+                combined_shrinkage = torch.cat([self.perm_mem.shrinkage, self.work_mem.shrinkage], -1)
+
+                similarity = get_similarity(combined_key, combined_shrinkage, query_key, selection)
+                perm_mem_similarity = similarity[:, :perm_mem_size]
+                work_mem_similarity = similarity[:, perm_mem_size:]
+            else:
+                similarity = get_similarity(self.work_mem.key, self.work_mem.shrinkage, query_key, selection)
+                work_mem_similarity = similarity
 
             if self.enable_long_term:
-                affinity, usage = do_softmax(similarity, inplace=(num_groups == 1),
-                                             top_k=self.top_k, return_usage=True)
+                if self.perm_mem.engaged():
+                    similarity_for_softmax = torch.cat(
+                        [perm_mem_similarity, work_mem_similarity], 1)
+                else:
+                    similarity_for_softmax = work_mem_similarity
+
+                # Compute mmsp BEFORE softmax.
+                if self.enable_retry:
+                    with torch.no_grad():
+                        if perm_mem_size > 0:
+                            _mmsp = float(similarity_for_softmax[:, :perm_mem_size, :].max(dim=1).values.mean().item())
+                        else:
+                            _mmsp = float('nan')
+
+                affinity, usage = do_softmax(
+                    similarity_for_softmax,
+                    inplace=(num_groups == 1), top_k=self.top_k, return_usage=True)
+
+                if self.enable_retry:
+                    with torch.no_grad():
+                        if perm_mem_size > 0:
+                            _ps = float((affinity[:, :perm_mem_size, :].sum() / affinity.sum()).item())
+                        else:
+                            _ps = float('nan')
+                    self._last_mmsp = _mmsp
+                    self._last_perm_share = _ps
+
+                if self.perm_mem.engaged():
+                    work_usage = usage[:, perm_mem_size:]
+                else:
+                    work_usage = usage
 
                 # Record memory usage for working memory
-                self.work_mem.update_usage(usage.flatten())
+                self.work_mem.update_usage(work_usage.flatten())
             else:
-                affinity = do_softmax(similarity, inplace=(num_groups == 1),
-                                      top_k=self.top_k, return_usage=False)
+                if self.perm_mem.engaged():
+                    affinity = do_softmax(
+                        torch.cat([perm_mem_similarity, work_mem_similarity], 1),
+                        inplace=(num_groups == 1), top_k=self.top_k, return_usage=False)
+                else:
+                    affinity = do_softmax(work_mem_similarity, inplace=(num_groups == 1),
+                                          top_k=self.top_k, return_usage=False)
 
             affinity = [affinity]
 
             # compute affinity group by group as later groups only have a subset of keys
             for gi in range(1, num_groups):
-                affinity_one_group = do_softmax(similarity[:, -self.work_mem.get_v_size(gi):],
-                                                top_k=self.top_k, inplace=(gi == num_groups - 1))
+                if self.perm_mem.engaged() and gi < self.perm_mem.num_groups:
+                    affinity_one_group = do_softmax(
+                        torch.cat([perm_mem_similarity,
+                                   work_mem_similarity[:, -self.work_mem.get_v_size(gi):]], 1),
+                        top_k=self.top_k, inplace=(gi == num_groups - 1))
+                else:
+                    affinity_one_group = do_softmax(work_mem_similarity[:, -self.work_mem.get_v_size(gi):],
+                                                    top_k=self.top_k, inplace=(gi == num_groups - 1))
                 affinity.append(affinity_one_group)
 
-            all_memory_value = self.work_mem.value
+            if self.perm_mem.engaged():
+                all_memory_value = []
+                for gi, gv in enumerate(self.work_mem.value):
+                    if gi < self.perm_mem.num_groups:
+                        all_memory_value.append(torch.cat([self.perm_mem.value[gi], gv], -1))
+                    else:
+                        all_memory_value.append(gv)
+            else:
+                all_memory_value = self.work_mem.value
 
         # Shared affinity within each group
         all_readout_mem = torch.cat([
@@ -174,7 +339,7 @@ class MemoryManager:
 
         if selection is not None:
             if not self.enable_long_term:
-                warnings.warn('the selection factor is only needed in long-term mode', UserWarning)
+                _buf_warning(f"MemoryManager.add_memory(): the selection factor is only needed in long-term mode")
             selection = selection.flatten(start_dim=2)
 
         self.work_mem.add(key, value, shrinkage, selection, objects)
@@ -189,8 +354,15 @@ class MemoryManager:
                         self.long_mem.remove_obsolete_features(self.max_long_elements - self.num_prototypes)
 
                     self.compress_features()
-            except:
-                pass
+            except Exception as e:
+                import traceback
+                ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                # Keep only the last 5 traceback frames to bound message size
+                # (full traceback can be 30+ lines on deep call stacks).
+                tb_lines = traceback.format_exc().splitlines()
+                tb_short = '\n'.join(tb_lines[-10:]) if len(tb_lines) > 10 else '\n'.join(tb_lines)
+                err_message = f"[{ts}] compress_features failed: {type(e).__name__}: {e}\n{tb_short}"
+                _buf_warning(f"MemoryManager.add_memory(): {err_message}")
 
     def create_hidden_state(self, n, sample_key):
         # n is the TOTAL number of objects

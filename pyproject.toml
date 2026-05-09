@@ -11,7 +11,7 @@ exclude = [
 
 [project]
 name = "vsdeoldify"
-version = "5.6.7"
+version = "5.8.0"
 description = "HAVC functions for VapourSynth"
 readme = "README.md"
 requires-python = ">=3.10"

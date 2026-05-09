@@ -160,7 +160,7 @@ class RemasterColorizer:
                 break
         if self.num_ref_imgs < DEF_MIN_RF_FRAMES:
             HAVC_LogMessage(MessageType.EXCEPTION,
-                            "RemasterColorizer(): number of reference frames must be at least 2, found ",
+                            f"RemasterColorizer(): number of reference frames must be at least {DEF_MIN_RF_FRAMES}, found: ",
                             self.num_ref_imgs)
         return self.num_ref_imgs
 

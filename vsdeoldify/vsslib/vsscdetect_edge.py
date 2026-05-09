@@ -32,7 +32,24 @@ from vsdeoldify.vsslib.vsutils import frame_to_image
 def SceneDetectEdges(clip: vs.VideoNode, threshold: float = 0.07, frequency: int = 0, ssim_threshold: float = 0.0,
                      sc_diff_offset: int = 2, sc_min_int:int = 30, sc_mult_tht: int = 7, tht_white: float =0.70,
                      tht_black: float =0.12, sc_debug: bool = False) -> vs.VideoNode:
+    """Edge-based scene change detector using a Retinex-enhanced Kirsch/TCanny edge mask.
 
+    Computes masked pixel-difference statistics between temporally offset frames, combining
+    them with a misc.SCDetect pre-pass. Optional SSIM post-filtering (SceneDetectionFiltered)
+    further refines the detections. Annotates _SceneChangePrev/_SceneChangeNext frame properties.
+
+    :param clip:            Input clip (any format).
+    :param threshold:       Edge-diff threshold for scene detection [0, 1]. Default 0.07.
+    :param frequency:       If > 0, emit a scene change at least every 'frequency' frames. Default 0.
+    :param ssim_threshold:  SSIM post-filter threshold [0, 1]. 0 = disabled. Default 0.0.
+    :param sc_diff_offset:  Frame comparison offset in frames (≥ 1). Default 2.
+    :param sc_min_int:      Minimum frame distance between scene changes. Default 30.
+    :param sc_mult_tht:     Multiplier for the mandatory high-threshold override. Default 7.
+    :param tht_white:       Luma upper bound for valid scene changes. Default 0.70.
+    :param tht_black:       Luma lower bound for valid scene changes. Default 0.12.
+    :param sc_debug:        If True, log per-frame debug messages. Default False.
+    :return:                Clip with _SceneChangePrev/_SceneChangeNext properties set.
+    """
     clip = clip.std.SetFrameProp(prop="sc_threshold", floatval=threshold)
     clip = clip.std.SetFrameProp(prop="sc_frequency", intval=frequency)
 
@@ -102,9 +119,23 @@ def SceneDetectEdges(clip: vs.VideoNode, threshold: float = 0.07, frequency: int
     return sc
 
 def TemporalMedian(clip, radius=1, planes=None):
+    """Temporal median filter using zsmooth.TemporalMedian.
+
+    :param clip:   Input clip.
+    :param radius: Temporal radius. Default 1.
+    :param planes: Plane list to filter. None = all planes.
+    :return:       Temporally median-filtered clip.
+    """
     return core.zsmooth.TemporalMedian(clip, radius=radius, planes=planes)
 
 def Median(clip, radius=1, planes=None):
+    """Spatial median filter with fallback: tries zsmooth.Median, then std.Median (radius==1 only).
+
+    :param clip:   Input clip.
+    :param radius: Filter radius. Default 1.
+    :param planes: Plane list to filter. None = all planes.
+    :return:       Spatially median-filtered clip.
+    """
     # fallback plugin because zsmooth does not support non AVX2 CPUs. use std.Median for r=1 and CTMF for higher.
     if hasattr(core, "zsmooth"):
         return core.zsmooth.Median(clip, radius=radius, planes=planes)
@@ -112,12 +143,30 @@ def Median(clip, radius=1, planes=None):
         return core.std.Median(clip, planes=planes)
 
 def kirsch(src: vs.VideoNode) -> vs.VideoNode:
+    """Compute a Kirsch edge-detection map via 4 directional 3×3 convolutions.
+
+    Each of the 4 rotated kernels detects edges in a different direction; the final
+    result is the per-pixel maximum across all 4 directions (via akarin.Expr).
+
+    :param src: GRAY8 or single-plane input clip.
+    :return:    Edge-strength clip (same format as src).
+    """
     w = [5]*3 + [-3]*5
     weights = [w[-i:] + w[:-i] for i in range(4)]
     c = [src.std.Convolution((w[:4]+[0]+w[4:]), saturate=False) for w in weights]
     return core.akarin.Expr(c, 'x y max z max a max')
 
 def retinex_edgemask(rgb: vs.VideoNode, sigma: float = 1.0, draft: bool = False) -> vs.VideoNode:
+    """Build an edge mask combining Retinex/gamma enhancement, Kirsch, and TCanny.
+
+    In draft mode a fast gamma-sqrt enhancement is used instead of Retinex MSRCP.
+    The final mask is the per-pixel sum of Kirsch and TCanny edges, clamped to [0, 255].
+
+    :param rgb:    GRAY8 input clip.
+    :param sigma:  TCanny Gaussian sigma. Default 1.0.
+    :param draft:  If True, use fast gamma boost instead of MSRCP Retinex. Default False.
+    :return:       GRAY8 edge-strength clip.
+    """
     if draft:
         # Gamma boost: sqrt(x/255) * 255
         #enhanced = core.std.Expr(rgb, 'x 255 / sqrt 255 *')
@@ -149,11 +198,25 @@ def vs_edge_based_scenedetect(
     canny_sigma: float = 1.2,
     sc_debug: bool = False
 ) -> vs.VideoNode:
-    """
-    Scene change detection con:
-      - Maschera edge Retinex-enhanced
-      - Esclusione scene troppo chiare/scure
-      - Smoothing temporale usando la funzione TemporalMedian()
+    """Core edge-based scene detection using a Retinex-enhanced edge mask and PlaneStats.
+
+    Computes masked (edge-weighted) pixel-difference statistics between frame[n] and
+    frame[n+sc_diff_offset]. A scene change is accepted when both the SSIM-style total
+    diff and the edge-masked diff exceed their respective thresholds, subject to the
+    sc_min_distance enforcement and sc_mult_tht override for very large edges.
+    Very dark or very bright frames (outside [tht_black, tht_white]) are suppressed.
+
+    :param clip:                Input clip (any format).
+    :param ssim_diff_threshold: Total pixel-diff threshold (4× PlaneStatsAverage). Default 0.10.
+    :param edge_diff_threshold: Masked edge-diff threshold (10× PlaneStatsAverage). Default 0.07.
+    :param sc_diff_offset:      Temporal offset between compared frames (≥ 1). Default 2.
+    :param sc_min_distance:     Minimum frame distance between scene changes. Default 10.
+    :param sc_mult_tht:         Multiplier for mandatory high-edge override. Default 7.
+    :param tht_white:           Luma upper bound for valid scene changes. Default 0.80.
+    :param tht_black:           Luma lower bound for valid scene changes. Default 0.10.
+    :param canny_sigma:         TCanny sigma for the edge mask. Default 1.2.
+    :param sc_debug:            If True, log per-frame debug messages. Default False.
+    :return:                    Clip with _SceneChangePrev/_SceneChangeNext properties set.
     """
     global _last_sc_frame, _last_sc_status
     _last_sc_frame = -sc_min_distance  # resetta ad ogni chiamata
@@ -286,6 +349,15 @@ def vs_edge_based_scenedetect(
     return sc_clip
 
 def enforce_min_scene_distance(clip: vs.VideoNode, min_distance: int = 10) -> vs.VideoNode:
+    """Remove scene-change detections that are closer than min_distance frames apart.
+
+    Iterates all frames, collects scene-change indices, applies a greedy filter keeping
+    only detections separated by at least min_distance, then annotates the clip.
+
+    :param clip:         Clip with _SceneChangePrev frame properties.
+    :param min_distance: Minimum allowed gap between consecutive scene changes. Default 10.
+    :return:             Clip with filtered _SceneChangePrev properties.
+    """
     if min_distance <= 1:
         return clip
 
@@ -317,6 +389,12 @@ def enforce_min_scene_distance(clip: vs.VideoNode, min_distance: int = 10) -> vs
     return clip.std.ModifyFrame(clip, apply)
 
 class SceneDetectionFiltered:
+    """Edge-based scene detection post-filter using SSIM and histogram distance.
+
+    Shares the same SSIM/histogram filtering logic as SceneDetection.SceneDetectFilter
+    but is tuned for the edge-based detection pipeline (reads sc_reason in addition to sc_luma).
+    """
+
     _sc_debug: bool = None
     _sc_last_index = None
     _sc_last_ref = None
@@ -333,6 +411,13 @@ class SceneDetectionFiltered:
 
     def __init__(self, sc_tht_white: float = DEF_THT_WHITE, sc_tht_black: float = DEF_THT_BLACK,
                  sc_frequency: int = 0, sc_debug: bool = False):
+        """Initialise filtered scene detection state.
+
+        :param sc_tht_white: Luma upper bound for valid scene changes. Default DEF_THT_WHITE.
+        :param sc_tht_black: Luma lower bound for valid scene changes. Default DEF_THT_BLACK.
+        :param sc_frequency: Minimum scene change frequency (frames). Default 0.
+        :param sc_debug:     If True, log per-frame debug messages. Default False.
+        """
         self._sc_debug = sc_debug
         self._sc_last_index = None
         self._sc_last_ref = None
@@ -352,6 +437,16 @@ class SceneDetectionFiltered:
                                ", sc_tht_white= ", sc_tht_white, ", sc_frequency= ", sc_frequency)
 
     def SceneDetectFilter(self, clip: vs.VideoNode, ssim_threshold: float = 0.55, min_length: int = 1) -> vs.VideoNode:
+        """Post-filter scene changes using SSIM and histogram similarity (edge-based version).
+
+        Processes the clip in batches of 5000 frames. Suppresses detections where SSIM
+        indicates high similarity to the previous scene-change frame.
+
+        :param clip:           Clip with candidate _SceneChangePrev flags and sc_luma/sc_reason props.
+        :param ssim_threshold: SSIM threshold below which a detection is accepted. Default 0.55.
+        :param min_length:     Minimum frame distance between accepted scene changes. Default 1.
+        :return:               Clip with refined _SceneChangePrev/_SceneChangeNext properties.
+        """
         t_step = 5000  # batch size for the SSIM filter (to avoid buffer memory problems)
         clip_length = clip.num_frames
 
@@ -369,6 +464,14 @@ class SceneDetectionFiltered:
 
     def _scene_detect_filter_task(self, t_start: int, clip: vs.VideoNode, tht_ssim: float = 0.55, min_length: int = 1
                                   ) -> vs.VideoNode:
+        """Process one batch of frames for SSIM/histogram post-filtering (edge-based version).
+
+        :param t_start:   Absolute frame offset of this batch.
+        :param clip:      Batch clip with candidate _SceneChangePrev flags.
+        :param tht_ssim:  SSIM threshold; below = scene change accepted. Default 0.55.
+        :param min_length: Minimum frame distance between accepted scene changes. Default 1.
+        :return:          Batch clip with refined _SceneChangePrev/_SceneChangeNext properties.
+        """
         def set_scenechange(n: int, f: vs.VideoFrame, t_start: int, clip: vs.VideoNode, ssim_tht: float,
                             tht_white: float, tht_black, min_length: int = 1) -> vs.VideoFrame:
             fout = f.copy()
@@ -494,6 +597,13 @@ class SceneDetectionFiltered:
         return sc
 
     def _calc_histogram(self, y_img: np.ndarray, bins: int = 256, normalize: bool = True) -> np.ndarray:
+        """Compute a (normalised) histogram of a grayscale image channel.
+
+        :param y_img:     2-D uint8 grayscale image array.
+        :param bins:      Number of histogram bins. Default 256.
+        :param normalize: If True, normalise the histogram to [0, 1]. Default True.
+        :return:          1-D float array of length bins.
+        """
         # Extract Luma channel from the frame image
 
         # Create the histogram with a bin for every rgb value

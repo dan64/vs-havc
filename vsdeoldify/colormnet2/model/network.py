@@ -9,11 +9,11 @@ It further depends on modules.py which gives more detailed implementations of su
 import torch
 import torch.nn as nn
 
-from vsdeoldify.colormnet.model.aggregate import aggregate
-from vsdeoldify.colormnet.model.modules import *
-from vsdeoldify.colormnet.model.memory_util import *
+from vsdeoldify.colormnet2.model.aggregate import aggregate
+from vsdeoldify.colormnet2.model.modules import *
+from vsdeoldify.colormnet2.model.memory_util import *
 
-from vsdeoldify.colormnet.model.attention import LocalGatedPropagation
+from vsdeoldify.colormnet2.model.attention import LocalGatedPropagation
 
 class ColorMNet(nn.Module):
     def __init__(self, config, model_path=None, map_location=None):

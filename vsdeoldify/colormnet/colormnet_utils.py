@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-09-14
 version:
 LastEditors: Dan64
-LastEditTime: 2025-01-31
+LastEditTime: 2025-04-21
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
@@ -92,7 +92,7 @@ class RefImageReader:
                 break
         if self.num_ref_imgs < DEF_MIN_RF_FRAMES:
             HAVC_LogMessage(MessageType.EXCEPTION,
-                            "RemasterColorizer(): number of reference frames must be at least 2, found ",
+                            f"ColorMNet(): number of reference frames must be at least {DEF_MIN_RF_FRAMES}, found: ",
                             self.num_ref_imgs)
         return self.num_ref_imgs
 

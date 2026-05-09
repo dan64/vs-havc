@@ -28,6 +28,12 @@ convert an image to gray or B&W if threshold > 0
 
 
 def rgb_to_gray(img: Image, threshold: float = 0) -> Image:
+    """Convert a PIL RGB image to grayscale (or binary B&W if threshold > 0).
+
+    :param img:       Input PIL RGB image.
+    :param threshold: Binary threshold in [0, 1]. 0 = continuous grayscale, >0 = B&W.
+    :return:          Grayscale (or binary) PIL RGB image.
+    """
     gray_np = np_rgb_to_gray(np.array(img), threshold)
 
     return Image.fromarray(gray_np, 'RGB')
@@ -44,6 +50,13 @@ merge image1 with image2 using the image mask (white->img2, black->img1)
 
 
 def image_mask_merge(img1: Image, img2: Image, mask: Image) -> Image:
+    """Merge two PIL images using a binary mask (white → img2, black → img1).
+
+    :param img1: Base image.
+    :param img2: Overlay image.
+    :param mask: Mask image (white selects img2, black selects img1).
+    :return:     Merged PIL RGB image.
+    """
     img1_np = np.array(img1)
     img2_np = np.array(img2)
     mask_np = np.array(mask)
@@ -64,6 +77,17 @@ merge image1 with image2 using the image mask (mask_white->img_white, mask_black
 
 
 def image_luma_merge(img_dark: Image, img_white: Image, luma: float = 0, return_mask: bool = False) -> Image:
+    """Merge two images using a binary luma mask derived from img_white.
+
+    Pixels in img_white whose luma exceeds the threshold come from img_white;
+    darker pixels come from img_dark.
+
+    :param img_dark:    Base (dark) image.
+    :param img_white:   Overlay image; also provides the luma mask.
+    :param luma:        Luma threshold in [0, 1]. Default 0 (no threshold).
+    :param return_mask: If True, return the computed mask instead of the merged image.
+    :return:            Merged PIL RGB image (or mask if return_mask=True).
+    """
     img1_np = np.array(img_dark)
     img2_np = np.array(img_white)
     # the mask is built using the second image
@@ -79,7 +103,18 @@ def image_luma_merge(img_dark: Image, img_white: Image, luma: float = 0, return_
 
 def w_image_luma_merge(img_dark: Image, img_white: Image, dark_luma: float = 0.3, white_luma=0.9,
                        return_mask: bool = False) -> Image:
+    """Merge two images with a smooth gradient weight ramp between dark_luma and white_luma.
 
+    Pixels below dark_luma come entirely from img_dark; pixels above white_luma come
+    entirely from img_white; pixels in between are blended proportionally.
+
+    :param img_dark:    Base image used below dark_luma.
+    :param img_white:   Overlay image used above white_luma.
+    :param dark_luma:   Lower boundary of the gradient ramp (fraction [0, 1]). Default 0.3.
+    :param white_luma:  Upper boundary of the gradient ramp (fraction [0, 1]). Default 0.9.
+    :param return_mask: If True, return the weight mask visualised as a grayscale image.
+    :return:            Blended PIL RGB image (or mask if return_mask=True).
+    """
     if dark_luma >= white_luma:
         return img_dark
 
@@ -111,7 +146,15 @@ numpy implementation of image merge on 3 planes, faster than vs.core.std.Merge()
 
 
 def image_weighted_merge(img1: Image, img2: Image, weight: float = 0.5) -> Image:
+    """Blend two PIL images: result = img1 * (1 - weight) + img2 * weight.
 
+    Uses PIL.Image.blend for speed. Returns img1 when weight==0, img2 when weight==1.
+
+    :param img1:   First image.
+    :param img2:   Second image.
+    :param weight: Blend weight assigned to img2, range [0, 1]. Default 0.5.
+    :return:       Blended PIL RGB image.
+    """
     if weight == 0.0:
         return img1
 
@@ -132,6 +175,13 @@ def image_weighted_merge(img1: Image, img2: Image, weight: float = 0.5) -> Image
 """
 
 def np_image_weighted_merge(img1_np: np.ndarray, img2_np: np.ndarray, weight: float = 0.5) -> np.ndarray:
+    """NumPy weighted blend: result = img1 * (1 - weight) + img2 * weight.
+
+    :param img1_np: Base image array (H, W, 3), uint8.
+    :param img2_np: Overlay image array, same shape.
+    :param weight:  Blend weight for img2 [0, 1]. Default 0.5.
+    :return:        Blended array, dtype uint8.
+    """
     img_new = np.copy(img1_np)
 
     img_m = np.multiply(img1_np, 1 - weight) + np.multiply(img2_np, weight)
@@ -280,6 +330,15 @@ of 20% using the Pillow library (slower than chroma_stabilizer)
 
 
 def chroma_smoother(img_prv: Image, img: Image) -> Image:
+    """Clip the per-channel values of img to ±20% of img_prv using Pillow.
+
+    Slower than chroma_stabilizer but uses PIL ImageMath.  After constraining each
+    RGB channel, the chroma (U, V) is copied into orig via chroma_post_process.
+
+    :param img_prv: Reference (previous) PIL RGB image providing the ±20% bounds.
+    :param img:     Current PIL RGB image to be constrained.
+    :return:        Chroma-smoothed PIL RGB image.
+    """
     r2, g2, b2 = img.split()
 
     img1_up = Image.eval(img_prv, (lambda x: min(x * (1 + 0.20), 255)))
@@ -310,6 +369,12 @@ Function to copy the chroma parametrs "U", "V", of "img_m" in "orig"
 
 
 def chroma_post_process(img_m: Image, orig: Image) -> Image:
+    """Copy the chroma (U, V) of img_m into orig, keeping orig's luma (Y).
+
+    :param img_m: Source of chroma (U, V channels in YUV).
+    :param orig:  Source of luma (Y channel); also determines output resolution.
+    :return:      PIL RGB image with Y from orig and U/V from img_m.
+    """
     img_np = np.asarray(img_m)
     orig_np = np.asarray(orig)
     img_yuv = cv2.cvtColor(img_np, cv2.COLOR_RGB2YUV)
@@ -334,6 +399,22 @@ of image if the average luma is below the parameter "gamma_luma_min"
 
 def luma_adjusted_levels(img: Image, luma_min: float = 0, gamma: float = 1.0, gamma_luma_min: float = 0,
                          gamma_alpha: float = 0, gamma_min: float = 0.2, i_min: int = 0, i_max: int = 255) -> Image:
+    """Force minimum average luma and apply adaptive gamma correction.
+
+    If the frame average luma is below luma_min, a bias is added to the Y channel to
+    bring it up. If gamma != 1 and luma < gamma_luma_min, gamma is applied (optionally
+    decaying with luma when gamma_alpha != 0).
+
+    :param img:           Input PIL RGB image.
+    :param luma_min:      Minimum average luma target (fraction [0, 1]). 0 = disabled.
+    :param gamma:         Gamma exponent; 1.0 = no-op.
+    :param gamma_luma_min: Luma threshold below which gamma is applied. 0 = disabled.
+    :param gamma_alpha:   Power for adaptive gamma decay. 0 = constant gamma.
+    :param gamma_min:     Minimum gamma value when adaptive decay is active. Default 0.2.
+    :param i_min:         Minimum pixel value after adjustment. Default 0.
+    :param i_max:         Maximum pixel value after adjustment. Default 255.
+    :return:              Adjusted PIL RGB image.
+    """
     img_np = np.asarray(img)
 
     yuv = cv2.cvtColor(img_np, cv2.COLOR_RGB2YUV)
@@ -383,6 +464,13 @@ adjust the contrast of an image, color-space: YUV
 
 
 def image_gamma_contrast(img: Image, gamma: float = 1.0, cont: float = 1.0):
+    """Apply gamma correction and contrast stretch to a PIL image (YUV colour space).
+
+    :param img:   Input PIL RGB image.
+    :param gamma: Gamma exponent. 1.0 = no-op.
+    :param cont:  Contrast factor. 1.0 = no-op.
+    :return:      Adjusted PIL RGB image.
+    """
     if cont == 1 and gamma == 1:
         return img
 
@@ -394,6 +482,12 @@ def image_gamma_contrast(img: Image, gamma: float = 1.0, cont: float = 1.0):
 
 
 def image_contrast(img: Image, cont: float = 1.0):
+    """Adjust contrast of a PIL image (YUV colour space). Wrapper for image_gamma_contrast.
+
+    :param img:  Input PIL RGB image.
+    :param cont: Contrast factor. 1.0 = no-op.
+    :return:     Contrast-adjusted PIL RGB image.
+    """
     if cont == 1:
         return img
 
@@ -411,6 +505,12 @@ adjust the brightness of an image, color-space: YUV
 
 
 def image_brightness(img: Image, bright: float = 0.0):
+    """Adjust brightness of a PIL image by biasing the Y (luma) channel.
+
+    :param img:   Input PIL RGB image.
+    :param bright: Brightness offset added to Y/255; 0 = no change, range [-1, 1].
+    :return:      Brightness-adjusted PIL RGB image.
+    """
     if bright == 0:
         return img
 
@@ -538,6 +638,17 @@ def _apply_hue_shift(img: Image.Image, hue_deg: float) -> Image.Image:
     return img_hsv_shifted.convert('RGB')
 
 def image_chroma_tweak(img: Image, sat: float = 1, bright: float = 0, hue: int = 0, hue_adjust: str = 'none') -> Image:
+    """Adjust saturation, brightness, and hue of a PIL image in HSV colour space.
+
+    Optionally restricts adjustments to a specific hue range via hue_adjust.
+
+    :param img:        Input PIL RGB image.
+    :param sat:        Saturation multiplier [0, 10]. 1.0 = no change.
+    :param bright:     Brightness offset added to the V channel. 0 = no change.
+    :param hue:        Hue rotation in degrees [-360, +360]. 0 = no change.
+    :param hue_adjust: Chroma adjustment string (e.g. "300:360|0.8,0.1"). 'none' = disabled.
+    :return:           Adjusted PIL RGB image.
+    """
     if sat == 1 and bright == 0 and hue == 0 and hue_adjust == "none":
         return img  # non changes
 
@@ -550,6 +661,20 @@ def image_chroma_tweak(img: Image, sat: float = 1, bright: float = 0, hue: int =
 
 def np_image_tweak(img_np: np.ndarray, sat: float = 1, cont: float = 1.0, bright: float = 0, hue: float = 0,
                    gamma: float = 1.0, hue_range: str = 'none') -> np.ndarray:
+    """NumPy version of image_tweak: adjust sat/contrast/brightness/hue/gamma.
+
+    Applies gamma/contrast first (YUV), then sat/bright/hue in HSV space.
+    When hue_range is set, changes are blended only in the specified hue range.
+
+    :param img_np:    Input RGB array (H, W, 3), uint8.
+    :param sat:       Saturation multiplier [0, 10]. 1.0 = no change.
+    :param cont:      Contrast factor. 1.0 = no change.
+    :param bright:    Brightness offset for V channel. 0 = no change.
+    :param hue:       Hue rotation in degrees [-360, +360].
+    :param gamma:     Gamma exponent. 1.0 = no change.
+    :param hue_range: Hue range string for selective adjustment (e.g. "300:360,0:30").
+    :return:          Adjusted RGB array, uint8.
+    """
     if cont != 1 or gamma != 1:
         img_np = np_image_gamma_contrast(img_np, gamma, cont)
 
@@ -578,6 +703,11 @@ get the value of average brightness of an image
 
 
 def get_image_brightness(img: Image) -> float:
+    """Return the average brightness (V channel) of a PIL image, normalised to [0, 1].
+
+    :param img: Input PIL RGB image.
+    :return:    Mean V-channel value in [0, 1].
+    """
     img_np = np.asarray(img)
     hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
     brightness = np.mean(hsv[:, :, 2])
@@ -595,6 +725,12 @@ get the value of average luma of an image
 
 
 def get_image_luma(img: Image, maxrange: int = 255) -> float:
+    """Return the average luma (Y channel) of a PIL image, normalised by maxrange.
+
+    :param img:      Input PIL RGB image.
+    :param maxrange: Denominator for normalisation (use 235 for limited-range TV). Default 255.
+    :return:         Mean Y-channel value normalised to [0, 1].
+    """
     img_np = np.asarray(img)
     yuv = cv2.cvtColor(img_np, cv2.COLOR_RGB2YUV)
     luma = np.mean(yuv[:, :, 0])
@@ -611,7 +747,21 @@ image blend based on luma
 
 def image_luma_blend(img: Image, img_new: Image, f_luma: float = 0.5, luma_limit: float = 0.4,
                      alpha: float = 0.90, min_w: float = 0.15, decay: float = 4.0) -> Image:
+    """Blend img and img_new with a weight that decreases for dark frames.
 
+    When f_luma < luma_limit the weight assigned to img_new follows a power-law decay:
+    ``w = max(alpha * (f_luma / luma_limit)^decay, min_w)``.
+    Frames at or above luma_limit use img_new unchanged.
+
+    :param img:        Original image.
+    :param img_new:    New (processed) image.
+    :param f_luma:     Average luma of the frame, range [0, 1].
+    :param luma_limit: Luma threshold below which blending activates. Default 0.4.
+    :param alpha:      Maximum blend weight for img_new. Default 0.90.
+    :param min_w:      Minimum blend weight for very dark frames. Default 0.15.
+    :param decay:      Power-law exponent controlling weight fall-off. Default 4.0.
+    :return:           Blended PIL RGB image.
+    """
     # Luma merge
     if f_luma < luma_limit:
         bright_scale = min(max(pow(f_luma / luma_limit, decay), 0), 1)
@@ -636,6 +786,13 @@ absolute percentage deviation respect to "prv_img" not higher than "alpha"
 
 
 def _chroma_temporal_limiter(cur_img: Image, prv_img: Image, alpha: float = 0.05) -> Image:
+    """Constrain the chroma (U, V) of cur_img to within ±alpha of prv_img's values.
+
+    :param cur_img: Current frame PIL RGB image.
+    :param prv_img: Previous reference PIL RGB image providing the chroma bounds.
+    :param alpha:   Maximum fractional chroma deviation allowed. Default 0.05 (5%).
+    :return:        Chroma-limited PIL RGB image.
+    """
     img1_np = np.asarray(prv_img)
     yuv1 = cv2.cvtColor(img1_np, cv2.COLOR_RGB2YUV)
     u1 = yuv1[:, :, 1]
@@ -678,6 +835,15 @@ values of previous "nframes"
 
 
 def _color_temporal_stabilizer(img_f: list, weight_list: list = None) -> Image:
+    """Average the chroma (U, V) of multiple frames using the provided weights.
+
+    The centre frame's luma (Y) is preserved; only U and V are averaged.
+
+    :param img_f:       List of PIL RGB images (ordered temporally, centre at index Nh).
+    :param weight_list: Per-frame weights (integers), same length as img_f. Weights are
+                        divided by 100 before use.
+    :return:            PIL RGB image with temporally stabilised chroma.
+    """
     nframes = len(weight_list)
 
     Nh = round((nframes - 1) / 2)

@@ -37,6 +37,22 @@ The vector order is: H = 0, S = 1, V = 2
 
 def restore_color(img_color: Image = None, img_gray: Image = None, sat: float = 1.0, tht: int = 15, weight: float = 0,
                   tht_scen: float = 0.8, hue_adjust: str = 'none', return_mask: bool = False) -> Image:
+    """Restore the colours of gray pixels in img_gray using a binary HSV saturation mask.
+
+    Pixels in img_gray with HSV-S < tht are considered gray and replaced with
+    (optionally desaturated) pixels from img_color. If the frame is nearly fully gray
+    (ratio > tht_scen) it is returned unchanged.
+
+    :param img_color:   Source of replacement colours (PIL RGB image).
+    :param img_gray:    Target image with gray areas to be coloured (PIL RGB image).
+    :param sat:         Saturation multiplier applied to img_color before merging. Default 1.0.
+    :param tht:         Saturation threshold to identify gray pixels [0, 255]. Default 15.
+    :param weight:      Post-merge blend weight: >0 blends back with img_gray, <0 with img_color. Default 0.
+    :param tht_scen:    If gray-pixel ratio exceeds this value the frame is returned unchanged. Default 0.8.
+    :param hue_adjust:  Chroma adjustment string applied after restoration. 'none' = disabled.
+    :param return_mask: If True, return the binary gray-pixel mask instead of the restored image.
+    :return:            Colour-restored PIL RGB image (or mask if return_mask=True).
+    """
     np_color = np.asarray(img_color)
     np_gray = np.asarray(img_gray)
 
@@ -97,6 +113,21 @@ The vector order is: H = 0, S = 1, V = 2
 
 def restore_color_gradient(img_color: Image = None, img_gray: Image = None, sat: float = 1.0, tht: int = 50,
                            weight: float = 0, alpha: float = 2.0, return_mask: bool = False, algo: int = 0) -> Image:
+    """Restore colours of gray pixels in img_gray using a smooth gradient mask.
+
+    Unlike restore_color (binary mask) this function builds a gradient mask from the
+    saturation channel so the transition from gray to coloured areas is smooth.
+
+    :param img_color:   Source of replacement colours (PIL RGB image).
+    :param img_gray:    Target image with gray areas (PIL RGB image).
+    :param sat:         Saturation multiplier applied to img_color. Default 1.0.
+    :param tht:         Saturation threshold for the gradient [0, 255]. Default 50.
+    :param weight:      Post-merge blend weight: >0 toward img_color, <0 toward img_gray. Default 0.
+    :param alpha:       Steepness of the gradient curve. Higher = more aggressive. Default 2.0.
+    :param return_mask: If True, return the gradient mask instead of the restored image.
+    :param algo:        Mask algorithm: 0 = linear-steep (default), 1 = linear, 2 = exponential.
+    :return:            Colour-restored PIL RGB image (or mask if return_mask=True).
+    """
     np_color = np.asarray(img_color)
     np_gray = np.asarray(img_gray)
 
@@ -135,7 +166,16 @@ def restore_color_gradient(img_color: Image = None, img_gray: Image = None, sat:
 
 
 def w_np_gradient_mask_steep(img_np: np.ndarray, tht: int = 15, alpha: float = 2.0, steep: float = 2.0) -> np.ndarray:
+    """Build a steep linear gradient mask from a saturation channel array.
 
+    Returns 255 for fully gray pixels (S near 0) decaying to 0 around S=tht.
+
+    :param img_np:  HSV saturation channel, shape (H, W), range [0, 255].
+    :param tht:     Saturation threshold; pixels below are considered gray. Default 15.
+    :param alpha:   Controls the slope steepness on the upper side of the gradient. Default 2.0.
+    :param steep:   Multiplier controlling the lower-slope behaviour. Default 2.0.
+    :return:        Mask array, shape (H, W), values in [0, 255] as int.
+    """
     luma_np = img_np.clip(0, 255)
 
     # grad = np.where(luma_np < tht, luma_np, tht + (luma_np - tht)*alpha)
@@ -219,6 +259,16 @@ weight: if > 0 -> merge with desaturared frame, if < 0 -> merge with colored org
 
 
 def adjust_hue_range(img_color: Image = None, hue_adjust: str = 'none', return_mask: bool = False) -> Image:
+    """Adjust saturation and/or hue in a specified colour range of a PIL image.
+
+    Parses hue_adjust (format: "hue_range|sat_or_hue,weight") and delegates to
+    adjust_chroma. Returns the original image when hue_adjust is 'none' or empty.
+
+    :param img_color:   Input PIL RGB image.
+    :param hue_adjust:  Chroma adjustment string (e.g. "300:360|0.8,0.1"). 'none' = bypass.
+    :param return_mask: If True, return the hue-range selection mask.
+    :return:            Adjusted PIL RGB image (or mask if return_mask=True).
+    """
     if hue_adjust == 'none' or hue_adjust == '':
         return img_color
 
@@ -238,6 +288,19 @@ def adjust_hue_range(img_color: Image = None, hue_adjust: str = 'none', return_m
 
 def adjust_chroma(img_color: Image = None, hue_range: str = 'none', sat: float = 0.3, hue: int = 0, weight: float = 0,
                   return_mask: bool = False) -> Image:
+    """Apply saturation and hue adjustments only to pixels within a specified hue range.
+
+    Pixels in the hue range are replaced by the adjusted version; others are unchanged.
+    Optional blend weight merges the result back with the original.
+
+    :param img_color:   Input PIL RGB image.
+    :param hue_range:   Hue range string (e.g. "300:360,0:30" for multiple ranges). 'none' = bypass.
+    :param sat:         Saturation multiplier for the selected hue range. Default 0.3.
+    :param hue:         Hue shift in degrees for the selected range. Default 0.
+    :param weight:      Post-merge blend weight: >0 blend with adjusted frame, <0 with original. Default 0.
+    :param return_mask: If True, return the hue-range selection mask instead of adjusted image.
+    :return:            Adjusted PIL RGB image (or mask if return_mask=True).
+    """
     if hue_range == 'none' or hue_range == '':
         return img_color
 
@@ -287,6 +350,18 @@ def adjust_chroma(img_color: Image = None, hue_range: str = 'none', sat: float =
 
 def np_image_chroma_tweak(img_color_rgb: np.ndarray, sat: float = 1, bright: float = 0, hue: int = 0,
                           hue_adjust: str = 'none') -> np.ndarray:
+    """Adjust saturation, brightness, hue, and optionally a restricted hue range on a NumPy array.
+
+    Adjustments are applied in HSV space. If hue_adjust is set, an additional targeted
+    hue-range correction is applied after the global adjustments.
+
+    :param img_color_rgb: Input RGB array (H, W, 3), uint8.
+    :param sat:           Saturation multiplier [0, 10]. Default 1.
+    :param bright:        Brightness offset for V channel. Default 0.
+    :param hue:           Global hue rotation in degrees [-360, +360]. Default 0.
+    :param hue_adjust:    Chroma adjustment string for a specific hue range. 'none' = disabled.
+    :return:              Adjusted RGB array, uint8.
+    """
     if sat == 1 and bright == 0 and hue == 0 and hue_adjust == 'none':
         return img_color_rgb  # non changes
 
@@ -352,7 +427,18 @@ def np_image_chroma_tweak(img_color_rgb: np.ndarray, sat: float = 1, bright: flo
 
 def np_adjust_chroma2(np_color_rgb: np.ndarray, np_gray_rgb: np.ndarray, hue_range: str = 'none',
                       return_mask: bool = False) -> np.ndarray:
+    """Select pixels in hue_range from np_color_rgb and blend them into np_gray_rgb.
 
+    The hue mask is built from np_color_rgb's H channel; masked pixels are taken from
+    np_gray_rgb, unmasked pixels from np_color_rgb. Returns np_gray_rgb unchanged when
+    hue_range is 'none'.
+
+    :param np_color_rgb:  Reference array whose hue defines the selection mask (H, W, 3), uint8.
+    :param np_gray_rgb:   Target array whose pixels are inserted in the selected hue range.
+    :param hue_range:     Hue range string (e.g. "300:360"). 'none' = bypass.
+    :param return_mask:   If True, return the selection mask (H, W, 3), uint8.
+    :return:              Merged RGB array, uint8 (or mask if return_mask=True).
+    """
     if hue_range == 'none' or hue_range == '':
         return np_gray_rgb
 
@@ -377,6 +463,15 @@ def np_adjust_chroma2(np_color_rgb: np.ndarray, np_gray_rgb: np.ndarray, hue_ran
 
 
 def _parse_hue_adjust(hue_adjust: str = 'none') -> ():
+    """Parse a chroma adjustment string into (hue_range, sat, hue, weight).
+
+    Format: "hue_range|adjust,weight"
+    - adjust: if in (0, 10) interpreted as saturation, otherwise as hue shift (int).
+    - weight: float blend weight.
+
+    :param hue_adjust: Adjustment string. 'none' or '' returns None.
+    :return:           Tuple (hue_range: str, sat: float, hue: int, weight: float) or None on error.
+    """
     p = hue_adjust.split("|")
 
     sat = 1.0
@@ -415,6 +510,15 @@ def _parse_hue_adjust(hue_adjust: str = 'none') -> ():
 
 
 def _build_hue_conditions(hsv_s: np.ndarray = None, hue_range: str = None) -> np.ndarray:
+    """Build a boolean condition mask for pixels whose hue falls in the specified ranges.
+
+    Supports multiple comma-separated hue ranges (e.g. "300:360,0:30"). Hue values are
+    divided by 2 to match OpenCV's 8-bit HSV H range [0, 180].
+
+    :param hsv_s:     HSV Hue channel array (H, W), values in [0, 180] (OpenCV convention).
+    :param hue_range: Comma-separated hue range string (e.g. "300:360" or "red,blue").
+    :return:          Boolean array (H, W), True where pixel hue is within any specified range.
+    """
     h_range = hue_range.split(",")
     h_len = len(h_range)
 
@@ -434,6 +538,15 @@ def _build_hue_conditions(hsv_s: np.ndarray = None, hue_range: str = None) -> np
 
 
 def _parse_hue_range(hue_range: str = None) -> ():
+    """Convert a hue range string to a (min, max) degree tuple.
+
+    Accepts named colour strings (e.g. "red", "blue-green") or numeric ranges
+    in the format "min:max" (degrees, 0–360).
+
+    :param hue_range: Colour name or "min:max" string.
+    :return:          Tuple (hue_min, hue_max) in degrees [0, 360].
+    :raises vs.Error: If the name is unknown or format is invalid.
+    """
     # For color increments, each block in a given "hue_range" represents a Hue change of 30.
     match hue_range:
         case "red":
@@ -471,6 +584,15 @@ def _parse_hue_range(hue_range: str = None) -> ():
 
 
 def get_color_tune(hue_name: str = None) -> str:
+    """Return the hue range string for a named colour-tune preset.
+
+    Maps HAVC ColorFix names (e.g. "magenta", "violet/red") to their corresponding
+    "min:max" hue range strings used by adjust_chroma / adjust_hue_range.
+
+    :param hue_name: Colour-tune name (case-sensitive, lower-case).
+    :return:         Hue range string (e.g. "270:300").
+    :raises vs.Error: If hue_name is not a recognised preset.
+    """
     # For color increments, each block in a given "hue_range" represents a Hue change of 30.
     match hue_name:
         case "magenta":

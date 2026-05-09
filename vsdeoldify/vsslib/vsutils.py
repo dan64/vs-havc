@@ -23,6 +23,8 @@ IMG_EXTENSIONS = ['.png', '.PNG', '.jpg', '.JPG', '.jpeg', '.JPEG',
 
 
 class MessageType(IntEnum):
+    """Enumeration of HAVC log message severity levels, mapped to VapourSynth message types."""
+
     DEBUG = vs.MESSAGE_TYPE_DEBUG,
     INFORMATION = vs.MESSAGE_TYPE_INFORMATION,
     WARNING = vs.MESSAGE_TYPE_WARNING,
@@ -40,6 +42,14 @@ def HAVC_LogMessage(message_type: MessageType = MessageType.INFORMATION, message
 """
 
 def HAVC_LogMessage(message_type: MessageType = MessageType.INFORMATION, *args):
+    """Log a message to the VapourSynth log or raise a fatal exception.
+
+    When message_type is EXCEPTION, raises vs.Error (terminating the filter pipeline).
+    All other types delegate to vs.core.log_message.
+
+    :param message_type: Severity level from MessageType. Default INFORMATION.
+    :param args:         Message parts; joined with spaces to form the message text.
+    """
     message_text: str = ' '.join(map(str, args))
     if message_type == MessageType.EXCEPTION:
         raise vs.Error(message_text)
@@ -58,6 +68,11 @@ function to convert a VideoFrame in Pillow image
 
 
 def frame_to_image(frame: vs.VideoFrame) -> Image:
+    """Convert a VapourSynth VideoFrame (RGB24) to a PIL RGB image.
+
+    :param frame: RGB24 VideoFrame to convert.
+    :return:      PIL RGB Image with the same pixel data.
+    """
     npArray = np.dstack([np.asarray(frame[plane]) for plane in range(frame.format.num_planes)])
     return Image.fromarray(npArray, 'RGB')
 
@@ -74,6 +89,11 @@ function to convert a VideoFrame in Pillow image
 
 
 def frame_to_np_array(frame: vs.VideoFrame) -> np.ndarray:
+    """Convert a VapourSynth VideoFrame (RGB24) to a NumPy array (H, W, 3), uint8.
+
+    :param frame: RGB24 VideoFrame to convert.
+    :return:      NumPy array with shape (H, W, 3).
+    """
     npArray = np.dstack([np.asarray(frame[plane]) for plane in range(frame.format.num_planes)])
     return npArray
 
@@ -90,6 +110,12 @@ function to convert a Pillow image in VideoFrame
 
 
 def image_to_frame(img: Image, frame: vs.VideoFrame) -> vs.VideoFrame:
+    """Copy pixel data from a PIL RGB image into a VapourSynth VideoFrame.
+
+    :param img:   PIL RGB image whose data to copy.
+    :param frame: Target VideoFrame (must be writable, e.g. from f.copy()).
+    :return:      The modified VideoFrame.
+    """
     npArray = np.array(img)
     [np.copyto(np.asarray(frame[plane]), npArray[:, :, plane]) for plane in range(frame.format.num_planes)]
     return frame
@@ -106,6 +132,12 @@ function to convert a np.array() image in VideoFrame
 
 
 def np_array_to_frame(npArray: np.ndarray, frame: vs.VideoFrame) -> vs.VideoFrame:
+    """Copy pixel data from a NumPy array (H, W, 3) into a VapourSynth VideoFrame.
+
+    :param npArray: NumPy array with shape (H, W, num_planes) to copy.
+    :param frame:   Target VideoFrame (must be writable, e.g. from f.copy()).
+    :return:        The modified VideoFrame.
+    """
     [np.copyto(np.asarray(frame[plane]), npArray[:, :, plane]) for plane in range(frame.format.num_planes)]
     return frame
 
@@ -147,6 +179,22 @@ _sc_list: list[int]
 def vs_sc_export_frames(clip: vs.VideoNode = None, sc_framedir: str = None, ref_offset: int = 0,
                         ref_ext: str = 'png', ref_jpg_quality: int = 95, ref_override: bool = True,
                         prop_name: str = "_SceneChangePrev", sequence: bool = False) -> vs.VideoNode:
+    """Export scene-change frames to a directory as image files.
+
+    Frames flagged by prop_name are saved to sc_framedir as ref_NNNNNN.ext. When
+    sequence=True the filename counter increments for each exported frame regardless of
+    the actual frame number; otherwise the frame number (plus ref_offset) is used.
+
+    :param clip:            RGB24 input clip.
+    :param sc_framedir:     Output directory for exported frames.
+    :param ref_offset:      Added to the frame number in the filename. Default 0.
+    :param ref_ext:         Image format extension ('png' or 'jpg'). Default 'png'.
+    :param ref_jpg_quality: JPEG quality when ref_ext='jpg'. Default 95.
+    :param ref_override:    If False, skip frames whose file already exists. Default True.
+    :param prop_name:       Frame property used to detect scene changes. Default '_SceneChangePrev'.
+    :param sequence:        If True, use a sequential counter instead of frame numbers. Default False.
+    :return:                Clip pass-through (side-effect: frames saved to disk).
+    """
     pil_ext = ref_ext.lower()
     global _sc_counter
     _sc_counter = 0
@@ -185,6 +233,22 @@ def vs_sc_export_frames(clip: vs.VideoNode = None, sc_framedir: str = None, ref_
 def vs_list_export_frames(clip: vs.VideoNode = None, sc_framedir: str = None, ref_list: list[int] = None,
                           offset: int = 0, ref_ext: str = 'png', ref_jpg_quality: int = 95, ref_override: bool = True,
                           fast_extract: bool = True) -> vs.VideoNode:
+    """Export frames from an explicit list of frame indices to a directory.
+
+    When fast_extract=True, only the listed frames are extracted (via _select_frames_by_list)
+    before saving, which is faster than iterating the whole clip. A single-element ref_list
+    is treated as a step value and automatically expanded to range(0, num_frames, ref_list[0]).
+
+    :param clip:            RGB24 input clip.
+    :param sc_framedir:     Output directory for exported frames.
+    :param ref_list:        List of frame indices to export, or a single-element step list.
+    :param offset:          Offset added to each frame index in the filename. Default 0.
+    :param ref_ext:         Image format extension ('png' or 'jpg'). Default 'png'.
+    :param ref_jpg_quality: JPEG quality when ref_ext='jpg'. Default 95.
+    :param ref_override:    If False, skip frames whose file already exists. Default True.
+    :param fast_extract:    If True, pre-filter the clip to the listed frames (faster). Default True.
+    :return:                Clip pass-through (side-effect: frames saved to disk).
+    """
     pil_ext = ref_ext.lower()
 
     if len(ref_list) == 1: # the list is automatically generated
@@ -234,6 +298,16 @@ def vs_list_export_frames(clip: vs.VideoNode = None, sc_framedir: str = None, re
 
 
 def vs_get_video_ref(clip: vs.VideoNode = None, prop_name: str = "_SceneChangePrev") -> vs.VideoNode:
+    """Annotate each frame with a 'sc_next_frame' property pointing to the next scene-change frame.
+
+    First pass: collects all scene-change frame numbers into _sc_list. Second pass: sets the
+    'sc_next_frame' property to the next scene-change frame number at each scene-change frame,
+    and 0 for non-scene-change frames; -1 signals the end of the list.
+
+    :param clip:      RGB24 input clip.
+    :param prop_name: Frame property used to detect scene changes. Default '_SceneChangePrev'.
+    :return:          Clip with 'sc_next_frame' frame property set per frame.
+    """
     global _sc_list, _sc_counter
     _sc_list = []
 
@@ -272,27 +346,52 @@ def vs_get_video_ref(clip: vs.VideoNode = None, prop_name: str = "_SceneChangePr
 
 
 def get_ref_last_list() -> list[int]:
+    """Return the global list of scene-change frame numbers collected by vs_get_video_ref."""
     global _sc_list
     return _sc_list
 
 
 def get_ref_num(filename: str = ""):
+    """Extract the frame number from a reference filename (format: ref_NNNNNN.ext).
+
+    :param filename: Reference filename string.
+    :return:         Integer frame number.
+    """
     fname = filename.split(".")[0]
     fnum = int(fname.split("_")[-1])
     return fnum
 
 
 def get_ref_images(in_dir="./") -> list:
+    """Return a list of full paths to reference image files in in_dir.
+
+    Only files matching the ref_NNNNNN naming convention and a supported extension
+    (as determined by is_ref_file) are included.
+
+    :param in_dir: Directory to scan. Default './'.
+    :return:       List of absolute file paths.
+    """
     img_ref_file = [os.path.join(in_dir, f) for f in os.listdir(in_dir) if is_ref_file(in_dir, f)]
     return img_ref_file
 
 
 def get_ref_names(in_dir="./") -> list:
+    """Return a list of filenames (not full paths) of reference images in in_dir.
+
+    :param in_dir: Directory to scan. Default './'.
+    :return:       List of filenames.
+    """
     img_ref_list = [f for f in os.listdir(in_dir) if is_ref_file(in_dir, f)]
     return img_ref_list
 
 
 def is_ref_file(in_dir="./", fname: str = "") -> bool:
+    """Return True if fname is a valid reference image file (starts with 'ref_', supported extension).
+
+    :param in_dir: Directory containing the file.
+    :param fname:  Filename to check.
+    :return:       True if the file exists and matches the reference naming convention.
+    """
     filename = os.path.join(in_dir, fname)
 
     if not os.path.isfile(filename):
@@ -302,6 +401,15 @@ def is_ref_file(in_dir="./", fname: str = "") -> bool:
 
 
 def frame_normalize(frame_np: np.ndarray, tht_black: float = 0.10, tht_white: float = 0.90) -> np.ndarray:
+    """Normalise the Y (luma) plane of a frame to [0, 255] when its average luma is in [tht_black, tht_white].
+
+    Frames that are too dark or too bright are returned unchanged to avoid over-normalisation.
+
+    :param frame_np:  Input array (H, W, 3), uint8, with Y in plane 0.
+    :param tht_black: Minimum average luma for normalisation to be applied. Default 0.10.
+    :param tht_white: Maximum average luma for normalisation to be applied. Default 0.90.
+    :return:          Normalised array (or original if outside the luma range).
+    """
     frame_y = frame_np[:, :, 0]
 
     frame_luma = np.mean(frame_y) / 255.0
@@ -338,6 +446,20 @@ def mean_pixel_distance(y_left: np.ndarray, y_right: np.ndarray, normalize: bool
 
 def debug_ModifyFrame(f_start: int = 0, f_end: int = 1, clip: vs.VideoNode = None,
                       clips: list[vs.VideoNode] = None, selector: partial = None, silent: bool = True) -> vs.VideoNode:
+    """Debug helper: manually execute a ModifyFrame selector over a range of frames.
+
+    Calls selector(n, frame) for each frame in [f_start, f_end) without building a
+    VapourSynth pipeline, which makes it useful for inspecting per-frame logic in Python.
+    Returns the original clip unchanged.
+
+    :param f_start:  First frame to process. Default 0.
+    :param f_end:    Last frame (exclusive). Clamped to clip length. Default 1.
+    :param clip:     Clip whose length defines the valid frame range.
+    :param clips:    List of input clips passed to selector (1 or more).
+    :param selector: Callable with signature (n, f) or (n, [f0, f1, ...]).
+    :param silent:   If False, print the frame number before each call. Default True.
+    :return:         Original clip (pass-through; side-effects from selector apply).
+    """
     f_end = min(f_end, clip.num_frames - 1)
     if len(clips) == 1:
         if f_start > 0:
@@ -370,6 +492,18 @@ def debug_ModifyFrame(f_start: int = 0, f_end: int = 1, clip: vs.VideoNode = Non
 
 def debug_FrameEval(f_start: int = 0, f_end: int = 1, clip: vs.VideoNode = None,
                       eval: partial = None, silent: bool = True) -> vs.VideoNode:
+    """Debug helper: manually execute a FrameEval callback over a range of frames.
+
+    Calls eval(n) for each frame in [f_start, f_end) outside the VapourSynth pipeline.
+    Returns the original clip unchanged.
+
+    :param f_start: First frame to evaluate. Default 0.
+    :param f_end:   Last frame (exclusive). Clamped to clip length. Default 1.
+    :param clip:    Clip whose length defines the valid frame range.
+    :param eval:    Callable with signature (n,).
+    :param silent:  If False, print the frame number before each call. Default True.
+    :return:        Original clip (pass-through).
+    """
     f_end = min(f_end, clip.num_frames - 1)
     for n in range(f_start, f_end):
         if not silent:

@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-09-27
 version:
 LastEditors: Dan64
-LastEditTime: 2026-01-17
+LastEditTime: 2026-04-21
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
@@ -23,6 +23,8 @@ from xmlrpc.server import SimpleXMLRPCRequestHandler
 from vsdeoldify.colormnet import ColorMNetRender
 from vsdeoldify.colormnet.colormnet_utils import *
 
+from vsdeoldify.colormnet.colormnet_logbuffer import ServerLogBuffer, log_warning, log_info
+
 package_dir = os.path.dirname(os.path.realpath(__file__))
 
 
@@ -34,6 +36,11 @@ class ColorMNetRPCServer:
     # Restrict to a particular path.
     class RequestHandler(SimpleXMLRPCRequestHandler):
         rpc_paths = ('/RPC2',)
+        # Use HTTP/1.1 to enable persistent connections (keep-alive). Without
+        # this the default HTTP/1.0 closes the TCP connection after every
+        # response, causing client-side ephemeral port exhaustion (WinError
+        # 10048) on long-running sessions with tens of thousands of RPC calls.
+        protocol_version = 'HTTP/1.1'
 
     def __init__(self, server_address: str = '127.0.0.1', server_port: int = 0):
         self.server_address = server_address
@@ -63,14 +70,14 @@ class ColorMNetRPCServer:
             if self.render is not None:
                 self.render.set_ref_frame(img, frame_propagate)
             else:
-                warnings.warn("ColorMNet Render is not initialized")
+                log_warning("ColorMNet Render is not initialized")
 
         def SetRefImageNone(self, frame_propagate: bool = False):
             img = None
             if self.render is not None:
                 self.render.set_ref_frame(img, frame_propagate)
             else:
-                warnings.warn("ColorMNet Render is not initialized")
+                log_warning("ColorMNet Render is not initialized")
 
         def IsInitialized(self) -> bool:
             return self.render is not None
@@ -82,18 +89,26 @@ class ColorMNetRPCServer:
                 img_byte_array = image_to_byte_array(img_colored)
                 return img_byte_array
             else:
-                warnings.warn("ColorMNet Render is not initialized")
+                log_warning("ColorMNet Render is not initialized")
                 return img_byte_array
 
         def GetFrameCount(self) -> int:
             if self.render is not None:
                 return self.render.get_frame_count()
             else:
-                warnings.warn("ColorMNet Render is not initialized")
+                log_warning("ColorMNet Render is not initialized")
                 return 0
 
+        def PollLogMessages(self) -> list:
+            """Return and clear pending server log messages.
+
+            Each item is a 2-element list [level:int, text:str] to keep the
+            XML-RPC payload minimal. Level matches MessageType integer values.
+            """
+            return [list(m) for m in ServerLogBuffer().drain()]
+
     def start_server(self):
-        warnings.warn("start ColorMNet server, listening on : " + str(self.server.server_address))
+        log_info("Start ColorMNet server, listening on : " + str(self.server.server_address))
         # Run the server's main loop
         self.server.serve_forever()
 
@@ -119,7 +134,7 @@ class ColorMNetServer:
                 self._initialized = True
             except Exception as exe:
                 self._initialized = False
-                raise RuntimeError(f"ColorMNetServer error allocating port {server_port}: {exe}")
+                raise RuntimeError(f"ColorMNet Server error allocating port {server_port}: {exe}")
 
     def run_server(self):
         if self.rpc_thread is None:
@@ -133,7 +148,7 @@ class ColorMNetServer:
 
     def close_server(self):
         if self.rpc_thread.is_alive():
-            warnings.warn("ColorMNet server is alive, stop it")
+            log_warning("ColorMNet server is alive, stop it")
             self.rpc_server.shutdown()
             self.rpc_thread.join()
-        warnings.warn("ColorMNet server closed")
+        log_info("ColorMNet server closed")

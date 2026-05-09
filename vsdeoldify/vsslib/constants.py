@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-11-20
 version:
 LastEditors: Dan64
-LastEditTime: 2025-10-19
+LastEditTime: 2026-04-20
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
@@ -58,10 +58,11 @@ DEF_ARTISTIC_WEIGHT: float = 0.50
 DEF_EXPORT_FORMAT: str = 'jpg'
 DEF_JPG_QUALITY: int = 95
 DEF_THRESHOLD: float = 0.10
+DEF_MIN_CPUID_RESIZE: int = 3        # min cpu_id to force chroma_resize
 DEF_MIN_FREQ: int = 10               # MIN reference frames frequency for deep-remaster
 DEF_MAX_FREQ: int = 15               # MAX reference frames frequency for deep-remaster
 DEF_SC_MIN_DISTANCE: int = 15
-DEF_MAX_MEMORY_FRAMES: int = 10000   # theoretically MAX_MEMORY must be < 95000
+DEF_MAX_MEMORY_FRAMES: int = 1000    # theoretically MAX_MEMORY must be < 95000, safe = 1000
 DEF_MAX_RF_FRAMES: int = 200         # MAX number of reference frames to use for deep-remster
 DEF_NUM_RF_FRAMES: int = 10          # default number of reference frames to use for deep-remster
 DEF_MIN_RF_FRAMES: int = 4           # MIN number of reference frames to use for deep-remster
@@ -69,9 +70,11 @@ DEF_MAX_BUFFER_SIZE: int = 500       # number of frames to scan for searching RF
 DEF_MAX_XREF_BUFFER: int = 500       # number of frames to scan for searching RF for colormnet
 DEF_MAX_XRF_FRAMES: int = 250        # MAX number of reference frames to load at start for colormnet
 DEF_MAX_XREF_WINDOW: int = 20        # number of forward reference frames for colormnet
-DEF_NUM_XRF_FRAMES: int = 30         # default number of reference frames to load at start for colormnet
-DEF_MIN_XRF_FRAMES: int = 4          # MIN number of reference frames to load at start for colormnet
+DEF_NUM_XRF_FRAMES: int = 20         # default number of reference frames to load at start for colormnet
+DEF_MIN_XRF_FRAMES: int = 2          # MIN number of reference frames to load at start for colormnet
 DEF_FUTURE_FRAME_WEIGHT: float = 0.5
+DEF_XRF_WINDOW_SIZE: int = 20        # default window_size for cmnet2 (replaces max_memory_frames semantics)
+DEF_XRF_SLIDE_PERCENT: float = 0.2   # SLIDE_STEP = max(1, round(window_size * DEF_XRF_SLIDE_PERCENT + 0.5))
 DEF_BATCH_SIZE: int = 2
 DEF_VIVID_HUE_LOW: float = 3.0
 DEF_VIVID_SAT_HIGH: float = 1.30

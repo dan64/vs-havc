@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2025-02-06
 version: 
 LastEditors: Dan64
-LastEditTime: 2026-04-06
+LastEditTime: 2026-05-08
 ------------------------------------------------------------------------------- 
 Description:
 ------------------------------------------------------------------------------- 
@@ -45,6 +45,27 @@ class ClipInfo(NamedTuple):
 
 VIDEO_EXTENSIONS = ['.mpg', '.mp4', '.m4v', '.avi', '.mkv', '.mpeg']
 
+# map integer _Matrix to zimg string
+MATRIX_INT_TO_STR = {
+    0: "rgb",
+    1: "709",
+    4: "fcc",
+    5: "470bg",
+    6: "170m",
+    7: "240m",
+    8: "ycgco",
+    9: "2020ncl",
+    10: "2020cl",
+}
+
+def _get_matrix_str(clip: vs.VideoNode, default: str = "709") -> str:
+    """Read _Matrix from frame props and return the equivalent zimg string."""
+    if _matrixIsInvalid(clip):
+        return default
+    matrix_val = clip.get_frame(0).props.get('_Matrix')
+    return MATRIX_INT_TO_STR.get(int(matrix_val), default)
+
+
 """
 ------------------------------------------------------------------------------- 
 Author: Dan64
@@ -68,10 +89,27 @@ def convert_format_RGB24(clip: vs.VideoNode, chroma_resize: bool = False) -> tup
     if not isinstance(clip, vs.VideoNode):
         HAVC_LogMessage(MessageType.EXCEPTION, "convert_format_RGB24: Input is not a valid clip.")
 
-    # Get frame properties for matrix and color range
-    frame = clip.get_frame(0)
-    props = frame.props
+    # It is assumed that the clip was converted to RGB by HAVC_read_video()
+    if clip.format.id == vs.RGB24:
+        if vs.core.core_version.release_major < 74:
+            clip_color_range = vs.ColorRange(vs.RANGE_FULL)
+        else:
+            clip_color_range = vs.Range(vs.RANGE_FULL)
 
+        clip_info = ClipInfo(
+            clip_orig=clip if chroma_resize else None,
+            format_id=original_format.id,
+            color_family=original_format.color_family,
+            bits_per_sample=original_format.bits_per_sample,
+            matrix=vs.MatrixCoefficients(vs.MATRIX_RGB),
+            color_range=clip_color_range,
+            chroma_resize=chroma_resize,
+        )
+        if chroma_resize:
+            clip = vsresize.resize_min_HW(clip)
+        return clip, clip_info
+
+    # Not Clip RGB
     # Set missing color properties to reasonable defaults
     if _matrixIsInvalid(clip):
         clip = clip.std.SetFrameProps(_Matrix=vs.MATRIX_BT709)
@@ -80,50 +118,27 @@ def convert_format_RGB24(clip: vs.VideoNode, chroma_resize: bool = False) -> tup
             clip = clip.std.SetFrameProps(_ColorRange=vs.RANGE_LIMITED)
         else:
             clip = clip.std.SetFrameProps(_Range=vs.RANGE_LIMITED)
+    # : Get frame properties for matrix and color range
+    frame = clip.get_frame(0)
+    props = frame.props
 
     if vs.core.core_version.release_major < 74:
         clip_color_range = vs.ColorRange(props.get('_ColorRange', vs.RANGE_LIMITED.value))
     else:
         clip_color_range = vs.Range(props.get('_Range', vs.RANGE_LIMITED.value))
 
-    if clip.format.id == vs.RGB24:
-        if chroma_resize:
-            clip_info = ClipInfo(clip_orig=clip,
-                                 format_id=original_format.id,
-                                 color_family=original_format.color_family,
-                                 bits_per_sample=original_format.bits_per_sample,
-                                 matrix=vs.MatrixCoefficients(props.get('_Matrix', vs.MATRIX_BT709.value)),
-                                 color_range=clip_color_range,
-                                 chroma_resize=True)
-            clip = vsresize.resize_min_HW(clip)
-        else:
-            clip_info = ClipInfo(clip_orig=None,
-                         format_id=original_format.id,
-                         color_family=original_format.color_family,
-                         bits_per_sample=original_format.bits_per_sample,
-                         matrix=vs.MatrixCoefficients(props.get('_Matrix', vs.MATRIX_BT709.value)),
-                         color_range=clip_color_range,
-                         chroma_resize=False)
-        return clip, clip_info
-
     # resize to max allowed width
+    clip_info = ClipInfo(
+        clip_orig=clip if chroma_resize else None,
+        format_id=original_format.id,
+        color_family=original_format.color_family,
+        bits_per_sample=original_format.bits_per_sample,
+        matrix=vs.MatrixCoefficients(props.get('_Matrix', vs.MATRIX_BT709.value)),
+        color_range=clip_color_range,
+        chroma_resize=chroma_resize,
+    )
     if chroma_resize:
-        clip_info = ClipInfo(clip_orig=clip,
-                             format_id=original_format.id,
-                             color_family=original_format.color_family,
-                             bits_per_sample=original_format.bits_per_sample,
-                             matrix=vs.MatrixCoefficients(props.get('_Matrix', vs.MATRIX_BT709.value)),
-                             color_range=clip_color_range,
-                             chroma_resize=True)
         clip = vsresize.resize_min_HW(clip)
-    else:
-        clip_info = ClipInfo(clip_orig=None,
-                         format_id=original_format.id,
-                         color_family=original_format.color_family,
-                         bits_per_sample=original_format.bits_per_sample,
-                         matrix=vs.MatrixCoefficients(props.get('_Matrix', vs.MATRIX_BT709.value)),
-                         color_range=clip_color_range,
-                         chroma_resize=False)
 
     # Ensure we're working with 8-bit
     if clip.format.bits_per_sample != 8:
@@ -131,12 +146,13 @@ def convert_format_RGB24(clip: vs.VideoNode, chroma_resize: bool = False) -> tup
 
     # Convert based on color family
     if original_format.color_family == vs.YUV:
-        matrix = clip.get_frame(0).props.get('_Matrix', vs.MATRIX_BT709)
+        matrix_val = int(clip.get_frame(0).props.get('_Matrix', 1))
+        matrix_str = MATRIX_INT_TO_STR.get(matrix_val, "709")
         # Use detected or default matrix
         clip = vs.core.resize.Bicubic(
             clip,
             format=vs.RGB24,
-            matrix_in=matrix,
+            matrix_in_s=matrix_str,
             range_in_s="limited",
             range_s="full",
             dither_type="error_diffusion"
@@ -154,6 +170,7 @@ def convert_format_RGB24(clip: vs.VideoNode, chroma_resize: bool = False) -> tup
             format=vs.RGB24,
             range_s="full"
         )
+    clip = clip.std.SetFrameProps(_Matrix=vs.MATRIX_RGB)
 
     # Ensure output is explicitly full-range
     if vs.core.core_version.release_major < 74:
@@ -199,7 +216,7 @@ def restore_format(clip: vs.VideoNode, clip_info: ClipInfo) -> vs.VideoNode:
         restored = vs.core.resize.Bicubic(
             clip,
             format=clip_info.format_id,
-            matrix_in=vs.MATRIX_BT709,
+            matrix_in=vs.MATRIX_RGB,
             matrix=matrix,
             range_in_s="full",
             range_s=range_s,
@@ -245,7 +262,6 @@ Description:
 function to read a video clip
 """
 
-
 def HAVC_read_video(source: str, fpsnum: int = 0, fpsden: int = 1, width: int = 0, height: int = 0,
                     return_rgb: bool = True) -> vs.VideoNode:
     """HAVC utility function to read a video provided externally.
@@ -261,6 +277,7 @@ def HAVC_read_video(source: str, fpsnum: int = 0, fpsden: int = 1, width: int = 
     :param return_rgb:   If True (default) the clip will be converted in RGB24 format
     :return:             clip in RGB24 format if return_rgb=True
     """
+
     if not os.path.isfile(source):
         HAVC_LogMessage(MessageType.EXCEPTION, "HAVC: invalid clip -> " + source)
 
@@ -285,13 +302,15 @@ def HAVC_read_video(source: str, fpsnum: int = 0, fpsden: int = 1, width: int = 
         clip = clip.resize.Spline36(width=clip.width, height=height)
 
     # setting color matrix to 709.
-    clip = vs.core.std.SetFrameProps(clip, _Matrix=vs.MATRIX_BT709)
+    if _matrixIsInvalid(clip):
+        clip = vs.core.std.SetFrameProps(clip, _Matrix=vs.MATRIX_BT709)
     # setting color transfer (vs.TRANSFER_BT709), if it is not set.
     if _transferIsInvalid(clip):
         clip = vs.core.std.SetFrameProps(clip=clip, _Transfer=vs.TRANSFER_BT709)
     # setting color primaries info (to vs.PRIMARIES_BT709), if it is not set.
     if _primariesIsInvalid(clip):
         clip = vs.core.std.SetFrameProps(clip=clip, _Primaries=vs.PRIMARIES_BT709)
+
     # setting color range to TV (limited) range.
     if vs.core.core_version.release_major < 74:
         clip = vs.core.std.SetFrameProps(clip=clip, _ColorRange=vs.RANGE_LIMITED)
@@ -303,6 +322,12 @@ def HAVC_read_video(source: str, fpsnum: int = 0, fpsden: int = 1, width: int = 
     clip = vs.core.std.SetFrameProps(clip=clip, _FieldBased=vs.FIELD_PROGRESSIVE)  # progressive
 
     if return_rgb:
+        # adjusting color space to RGB24 for HAVC
+        matrix_str = _get_matrix_str(clip, default="709")
+        clip = clip.resize.Bicubic(format=vs.RGB24, matrix_in_s=matrix_str, range_s="full")
+        # adjust _Matrix to RGB
+        clip = vs.core.std.SetFrameProps(clip=clip, _Matrix=vs.MATRIX_RGB)
+
         # changing range from limited to full range for HAVC
         clip = vs.core.resize.Bicubic(clip, range_in_s="limited", range_s="full")
         # setting color range to PC (full) range.
@@ -310,8 +335,6 @@ def HAVC_read_video(source: str, fpsnum: int = 0, fpsden: int = 1, width: int = 
             clip = vs.core.std.SetFrameProps(clip=clip, _ColorRange=vs.RANGE_FULL)
         else:
             clip = vs.core.std.SetFrameProps(clip=clip, _Range=vs.RANGE_FULL)
-        # adjusting color space to RGB24 for HAVC
-        clip = clip.resize.Bicubic(format=vs.RGB24, matrix_in_s="709", range_s="full")
     else:
         # setting color range to TV (limited) range.
         if vs.core.core_version.release_major < 74:
@@ -336,8 +359,8 @@ def _get_render_factors(Preset: str) -> tuple[int, int, int]:
     # Select presets / tuning
     Preset = Preset.lower()
     presets = ['placebo', 'veryslow', 'slower', 'slow', 'medium', 'fast', 'faster', 'veryfast']
-    preset0_rf = [32, 32, 32, 28, 24, 22, 20, 16]
-    preset1_rf = [32, 32, 32, 28, 24, 22, 20, 16]
+    preset0_rf = [36, 34, 32, 28, 24, 22, 20, 16]
+    preset1_rf = [36, 34, 32, 28, 24, 22, 20, 16]
 
     pr_id = 5  # default 'fast'
     try:
@@ -631,8 +654,22 @@ def is_limited_range(clip: vs.VideoNode) -> bool:
 def _matrixIsInvalid(clip: vs.VideoNode) -> bool:
     frame = clip.get_frame(0)
     value = frame.props.get('_Matrix', None)
-    return value in [None, 2, 3] or value not in vs.MatrixCoefficients.__members__.values()
 
+    # Non specificato o riservato
+    if value in (None, 2, 3):
+        return True
+
+    # Non un membro valido dell'enum
+    if value not in vs.MatrixCoefficients.__members__.values():
+        return True
+
+    # Coerenza con il color family
+    if clip.format.color_family == vs.RGB and value != 0:
+        return True  # RGB deve avere _Matrix=0
+    if clip.format.color_family in (vs.YUV, vs.GRAY) and value == 0:
+        return True  # YUV/GRAY non può avere _Matrix=RGB
+
+    return False
 
 def _transferIsInvalid(clip: vs.VideoNode) -> bool:
     frame = clip.get_frame(0)

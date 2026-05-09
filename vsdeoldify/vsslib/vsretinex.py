@@ -25,6 +25,21 @@ from vsdeoldify.vsslib.vsfilters import vs_recover_clip_luma
 def vs_retinex(clip: vs.VideoNode, luma_dark: float = 0.20, luma_bright: float = 0.80,
                sigmas: list[float] = (25, 80, 250), range_tv_in: bool = True, range_tv_out: bool = True,
                blend: bool = False, fast_mode:bool = True) -> vs.VideoNode:
+    """Apply Multi-Scale Retinex (MSR) enhancement, skipping frames outside the luma range.
+
+    Handles format conversion to/from RGB24 and routes to the fast plugin-based
+    implementation or the slower pure-Python MSR depending on fast_mode.
+
+    :param clip:        Input clip, any format.
+    :param luma_dark:   Lower luma bound; frames darker than this are skipped. Default 0.20.
+    :param luma_bright: Upper luma bound; frames brighter than this are skipped. Default 0.80.
+    :param sigmas:      Gaussian sigma values for MSR scales. Default (25, 80, 250).
+    :param range_tv_in: True = input is full-range (PC), False = limited-range (TV).
+    :param range_tv_out: True = output should be full-range, False = limited-range.
+    :param blend:       If True, blend enhanced frame with original using luma weight.
+    :param fast_mode:   If True use the Retinex.dll plugin (faster); else use Python MSR.
+    :return:            Enhanced clip, same format as input.
+    """
     orig_fmt_id = clip.format.id
     orig_fmt_family = clip.format.color_family
 
@@ -52,7 +67,21 @@ def vs_retinex(clip: vs.VideoNode, luma_dark: float = 0.20, luma_bright: float =
 def vs_retinex_fast(clip: vs.VideoNode, luma_dark: float = 0.20, luma_bright: float = 0.80,
                sigmas: list[float] = (25, 80, 250), range_tv_in: bool = True, range_tv_out: bool = True,
                blend: bool = False) -> vs.VideoNode:
+    """Fast Retinex enhancement using the retinex.MSRCP VapourSynth plugin.
 
+    Applies MSRCP only to frames whose average luma is in [luma_dark, luma_bright].
+    Frames outside that range are passed through unchanged to avoid artifacts.
+    Requires Retinex.dll to be installed (loaded via load_Retinex_plugin).
+
+    :param clip:        RGB24 input clip.
+    :param luma_dark:   Lower luma bound for processing. Default 0.20.
+    :param luma_bright: Upper luma bound for processing. Default 0.80.
+    :param sigmas:      MSR sigma scales. Default (25, 80, 250).
+    :param range_tv_in: True = full-range input.
+    :param range_tv_out: True = full-range output.
+    :param blend:       If True, blend enhanced frame with original using luma weight.
+    :return:            Enhanced RGB24 clip.
+    """
     load_Retinex_plugin()
 
     try:
@@ -90,7 +119,22 @@ def vs_retinex_fast(clip: vs.VideoNode, luma_dark: float = 0.20, luma_bright: fl
 def vs_retinex_slow(clip: vs.VideoNode, luma_dark: float = 0.20, luma_bright: float = 0.80,
                sigmas: list[float] = (25, 80, 250), range_tv_in: bool = True, range_tv_out: bool = True,
                blend: bool = False, chroma_resize: bool = True) -> vs.VideoNode:
+    """Slow Retinex enhancement using a pure-Python MSR implementation on the Y channel.
 
+    Optionally downsizes the clip to 384px for speed when chroma_resize=True, then
+    recovers original luma from the input after processing. Frames outside the luma
+    range [luma_dark, luma_bright] are returned unchanged.
+
+    :param clip:         RGB24 input clip.
+    :param luma_dark:    Lower luma bound for processing. Default 0.20.
+    :param luma_bright:  Upper luma bound for processing. Default 0.80.
+    :param sigmas:       MSR sigma scales. Default (25, 80, 250).
+    :param range_tv_in:  True = full-range input.
+    :param range_tv_out: True = full-range output.
+    :param blend:        If True, blend enhanced frame with original using luma weight.
+    :param chroma_resize: If True, process at 384px width for speed; restore luma afterwards.
+    :return:             Enhanced RGB24 clip.
+    """
     if chroma_resize and clip.width > 384:
         frame_size = 384
         rgb_clip = clip.resize.Spline36(width=frame_size, height=frame_size)

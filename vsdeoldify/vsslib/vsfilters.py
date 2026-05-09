@@ -37,6 +37,16 @@ be: "arithmetic", "weighted"
 
 def vs_clip_color_stabilizer(clip: vs.VideoNode = None, nframes: int = 5, mode: str = "A",
                              scenechange: bool = True) -> vs.VideoNode:
+    """Stabilise clip colours using std.AverageFrames on the U and V chroma planes.
+
+    Converts to YUV420P8, applies AverageFrames, and converts back to RGB24.
+
+    :param clip:        RGB24 input clip.
+    :param nframes:     Number of frames to average (forced odd). Range [3, 15]. Default 5.
+    :param mode:        Averaging mode: 'A' = arithmetic, 'W' = weighted (centre-biased).
+    :param scenechange: If True, resets the temporal average at scene changes.
+    :return:            Chroma-stabilised RGB24 clip.
+    """
     if nframes % 2 == 0:
         nframes += 1
 
@@ -84,6 +94,22 @@ frame restore is applied.
 def vs_chroma_stabilizer_ex(clip: vs.VideoNode = None, nframes: int = 5, mode: str = "A", sat: float = 1.0,
                             tht: int = 0, weight: float = 0.5, tht_scen: float = 0.8, hue_adjust: str = 'none',
                             algo: int = 0) -> vs.VideoNode:
+    """Extended chroma stabiliser with optional gray-pixel colour restoration.
+
+    When tht==0 delegates to vs_clip_color_stabilizer (no restoration). When tht>0,
+    restores gray pixels from neighbouring frames using restore_color before averaging.
+
+    :param clip:       RGB24 input clip.
+    :param nframes:    Number of frames for temporal averaging (forced odd). Range [3, 15]. Default 5.
+    :param mode:       Averaging mode: 'A' = arithmetic, 'W' = weighted.
+    :param sat:        Saturation applied to restored gray pixels. Default 1.0.
+    :param tht:        Saturation threshold to detect gray pixels [0, 255]. 0 = no restoration.
+    :param weight:     Blend weight between restored and original frame. Default 0.5.
+    :param tht_scen:   Scene-change detection threshold for restoration. Default 0.8.
+    :param hue_adjust: Chroma adjustment string applied to the final frame. 'none' = disabled.
+    :param algo:       Stabiliser algorithm: 0 = AverageFrames-based, 1 = ModifyFrame-based.
+    :return:           Chroma-stabilised RGB24 clip.
+    """
     if tht == 0:
         return vs_clip_color_stabilizer(clip, nframes, mode, scenechange=True)
 
@@ -116,6 +142,13 @@ def vs_chroma_stabilizer_ex(clip: vs.VideoNode = None, nframes: int = 5, mode: s
 
 
 def _build_avg_arithmetic(nframes: int = 5) -> list:
+    """Build an arithmetic (equal-weight) integer weight list for std.AverageFrames.
+
+    Weights sum to 100. The centre frame receives any rounding remainder.
+
+    :param nframes: Total number of frames (must be odd). Default 5.
+    :return:        List of integer weights summing to 100.
+    """
     N = nframes
     Nh = round((N - 1) / 2)
     Wi = math.trunc(100.0 / N)
@@ -134,6 +167,13 @@ def _build_avg_arithmetic(nframes: int = 5) -> list:
 
 
 def _build_avg_weighted(nframes: int = 5) -> list:
+    """Build a centre-weighted integer weight list for std.AverageFrames.
+
+    The centre frame receives twice the weight of flanking frames; weights sum to 100.
+
+    :param nframes: Total number of frames (must be odd). Default 5.
+    :return:        List of integer weights summing to 100.
+    """
     N = nframes
     Nh = round((N - 1) / 2)
 
@@ -171,6 +211,20 @@ the colors of current frame will be averaged with the ones of previous frames.
 
 def _average_frames_ex(clip: vs.VideoNode = None, weight_list: list = None, sat: float = 1.0, tht: int = 0,
                        weight: float = 0.2, tht_scen: float = 0.8, hue_adjust: str = 'none') -> vs.VideoNode:
+    """Temporal colour stabiliser using ModifyFrame: averages chroma across past and future frames.
+
+    For each frame, neighbouring frames are fetched via clip.get_frame(), their gray pixels
+    are restored using restore_color, and the results are averaged with _color_temporal_stabilizer.
+
+    :param clip:        RGB24 input clip.
+    :param weight_list: Per-frame integer weights (centre frame at index Nh). Sums to 100.
+    :param sat:         Saturation for restored gray pixels. Default 1.0.
+    :param tht:         Saturation threshold to detect gray pixels. Default 0.
+    :param weight:      Blend weight between restored and original frame. Default 0.2.
+    :param tht_scen:    Scene-change ratio threshold for restore_color. Default 0.8.
+    :param hue_adjust:  Chroma adjustment string. 'none' = disabled.
+    :return:            Temporally stabilised RGB24 clip.
+    """
     def smooth_frame(n, f, clip_base: vs.VideoNode = None, weight_list: list = None, sat: float = 1.0, tht: int = 0,
                      weight: float = 0.2, tht_scen: float = 0.8, hue_adjust: str = 'none') -> vs.VideoFrame:
         max_frames = len(weight_list)
@@ -215,6 +269,20 @@ the colors of current frame will be averaged with the ones of previous frames.
 
 def _average_clips_ex(clip: vs.VideoNode = None, weight_list: list = None, sat: float = 1.0, tht: int = 0,
                       weight: float = 0.2, tht_scen: float = 0.8, hue_adjust: str = 'none') -> vs.VideoNode:
+    """Temporal colour stabiliser using AverageFrames: averages chroma across shifted clips.
+
+    Builds offset clips via vs_get_clip_frame and vs_recover_clip_color, converts them
+    to YUV420P8, and averages with std.AverageFrames on chroma planes.
+
+    :param clip:        RGB24 input clip.
+    :param weight_list: Per-frame integer weights. Sums to 100.
+    :param sat:         Saturation for restored gray pixels. Default 1.0.
+    :param tht:         Saturation threshold to detect gray pixels. Default 0.
+    :param weight:      Blend weight between restored and original frame. Default 0.2.
+    :param tht_scen:    Scene-change ratio threshold for restore_color. Default 0.8.
+    :param hue_adjust:  Chroma adjustment string. 'none' = disabled.
+    :return:            Temporally stabilised RGB24 clip.
+    """
     max_frames = len(weight_list)
     clips: list[vs.VideoNode] = list()
     clip_yuv = clip.resize.Bicubic(format=vs.YUV420P8, matrix_s="709", range_s="full", dither_type="error_diffusion")
@@ -253,6 +321,16 @@ wrapper to function AverageFrames() to get frames fast.
 
 
 def vs_get_clip_frame(clip: vs.VideoNode, nframe: int = 0) -> vs.VideoNode:
+    """Return a clip where every frame is a copy of the frame at offset nframe.
+
+    Uses std.AverageFrames with a weight of 100 on the target offset and 0 on all others
+    to cheaply extract a frame at a relative position without looping. Positive nframe
+    fetches a future frame; negative fetches a past frame.
+
+    :param clip:   Input clip (any format).
+    :param nframe: Frame offset in [-15, +15]. 0 = return clip unchanged.
+    :return:       Clip where every output frame is taken from position n+nframe.
+    """
     if nframe == 0:
         return clip
 
@@ -300,7 +378,20 @@ wrapper to function restore_color() to restore gray frames.
 def vs_recover_clip_color(clip: vs.VideoNode = None, clip_color: vs.VideoNode = None, sat: float = 1.0, tht: int = 0,
                           weight: float = 0.2, tht_scen: float = 0.8, hue_adjust: str = 'none',
                           return_mask: bool = False) -> vs.VideoNode:
+    """Restore gray pixel colours in clip from clip_color (all frames, no scene-change check).
 
+    Wrapper around vs_sc_recover_clip_color with scenechange=False.
+
+    :param clip:        Target clip with gray areas to restore (RGB24).
+    :param clip_color:  Source clip providing replacement colours (RGB24).
+    :param sat:         Saturation multiplier for clip_color. Default 1.0.
+    :param tht:         Saturation threshold for gray-pixel detection [0, 255]. Default 0.
+    :param weight:      Post-merge blend weight. >0 blends toward original, <0 toward clip_color.
+    :param tht_scen:    Gray-frame ratio threshold; above it the original frame is returned.
+    :param hue_adjust:  Chroma adjustment string. 'none' = disabled.
+    :param return_mask: If True, return the gray-pixel mask.
+    :return:            Colour-restored RGB24 clip (or mask clip).
+    """
     return vs_sc_recover_clip_color(clip, clip_color, sat, tht, weight, tht_scen, hue_adjust, return_mask, scenechange=False)
 
 def vs_sc_recover_clip_color(clip: vs.VideoNode = None, clip_color: vs.VideoNode = None, sat: float = 1.0, tht: int = 0,
@@ -359,7 +450,19 @@ def vs_sc_recover_clip_color(clip: vs.VideoNode = None, clip_color: vs.VideoNode
 def vs_recover_gradient_color(clip: vs.VideoNode = None, clip_color: vs.VideoNode = None, sat: float = 1.0,
                               tht: int = 15, weight: float = 0.0, alpha: float = 2.0,
                               return_mask: bool = False) -> vs.VideoNode:
+    """Restore gray pixel colours using a gradient mask (all frames, no scene-change check).
 
+    Wrapper around vs_sc_recover_gradient_color with scenechange=False.
+
+    :param clip:        Target clip with gray areas to restore (RGB24).
+    :param clip_color:  Source clip providing replacement colours (RGB24).
+    :param sat:         Saturation multiplier for clip_color. Default 1.0.
+    :param tht:         Saturation threshold for gradient detection [0, 255]. Default 15.
+    :param weight:      Post-merge blend weight. Default 0.0.
+    :param alpha:       Gradient steepness. Default 2.0.
+    :param return_mask: If True, return the gradient mask clip.
+    :return:            Colour-restored RGB24 clip (or mask clip).
+    """
     return vs_sc_recover_gradient_color(clip, clip_color, sat, tht, weight, alpha, return_mask, scenechange=False)
 
 
@@ -434,6 +537,13 @@ wrapper to function restore_color() to restore gray frames.
 
 def vs_sc_adjust_clip_hue(clip: vs.VideoNode = None, hue_adjust: str = 'none',
                           scenechange: bool = True) -> vs.VideoNode:
+    """Apply a targeted hue-range colour adjustment to a clip with optional scene-change gating.
+
+    :param clip:        RGB24 input clip.
+    :param hue_adjust:  Chroma adjustment string (e.g. "300:360|0.8,0.1"). 'none' = bypass.
+    :param scenechange: If True, process only scene-change frames. Default True.
+    :return:            Hue-adjusted RGB24 clip.
+    """
     if hue_adjust == "" or hue_adjust == "none":
         return clip
 
@@ -456,6 +566,14 @@ def vs_sc_adjust_clip_hue(clip: vs.VideoNode = None, hue_adjust: str = 'none',
 
 
 def vs_adjust_clip_hue(clip: vs.VideoNode = None, hue_adjust: str = 'none') -> vs.VideoNode:
+    """Apply a targeted hue-range colour adjustment to all frames (no scene-change gating).
+
+    Wrapper around vs_sc_adjust_clip_hue with scenechange=False.
+
+    :param clip:       RGB24 input clip.
+    :param hue_adjust: Chroma adjustment string. 'none' = bypass.
+    :return:           Hue-adjusted RGB24 clip.
+    """
     return vs_sc_adjust_clip_hue(clip, hue_adjust, False)
 
 
@@ -471,6 +589,12 @@ the chroma of current frame will be forced to be inside the range defined by max
 
 
 def vs_chroma_limiter(clip: vs.VideoNode = None, deviation: float = 0.05) -> vs.VideoNode:
+    """Limit per-frame chroma (U, V) deviation to at most ±deviation from the previous frame.
+
+    :param clip:      RGB24 input clip.
+    :param deviation: Maximum fractional chroma change per frame. Clamped to [0.01, 0.50]. Default 0.05.
+    :return:          Chroma-limited RGB24 clip.
+    """
     max_deviation = max(min(deviation, 0.5), 0.01)
 
     def limit_chroma_frame(n, f, clip_base: vs.VideoNode = None, max_deviation: float = 0.05):
@@ -488,6 +612,12 @@ def vs_chroma_limiter(clip: vs.VideoNode = None, deviation: float = 0.05) -> vs.
 
 
 def _frame_chroma_stabilizer(clip: vs.VideoNode = None, max_deviation: float = 0.05) -> vs.VideoNode:
+    """Limit per-frame chroma deviation via ModifyFrame (internal implementation).
+
+    :param clip:          RGB24 input clip.
+    :param max_deviation: Maximum fractional chroma deviation. Default 0.05.
+    :return:              Chroma-limited RGB24 clip.
+    """
     def limit_chroma_frame(n, f, clip_base: vs.VideoNode = None, max_deviation: float = 0.05):
         f_out = f.copy()
         if n == 0:
@@ -503,6 +633,12 @@ def _frame_chroma_stabilizer(clip: vs.VideoNode = None, max_deviation: float = 0
 
 
 def _clip_chroma_stabilizer(clip: vs.VideoNode = None, max_deviation: float = 0.05) -> vs.VideoNode:
+    """Limit per-frame chroma deviation via FrameEval (alternative internal implementation).
+
+    :param clip:          RGB24 input clip.
+    :param max_deviation: Maximum fractional chroma deviation. Default 0.05.
+    :return:              Chroma-limited RGB24 clip.
+    """
     def limit_chroma_frame(n, f, clip_base: vs.VideoNode = None, max_deviation: float = 0.05):
         return _frame_chroma_stabilizer(clip_base, max_deviation)
 
@@ -525,6 +661,20 @@ by the dark_sat parameter.
 def vs_sc_chroma_bright_tweak(clip: vs.VideoNode = None, black_threshold: float = 0.3, white_threshold: float = 0.6,
                               dark_sat: float = 0.8, dark_bright: float = -0.10, scenechange: bool = True,
                               chroma_adjust: str = 'none') -> vs.VideoNode:
+    """Desaturate and darken pixels whose luma is below black_threshold.
+
+    A luma-based gradient mask blends the tweaked frame with the original between
+    black_threshold and white_threshold. Optionally applies a direct colour mapping.
+
+    :param clip:             RGB24 input clip.
+    :param black_threshold:  Luma below which the tweak is fully applied (fraction [0, 1]).
+    :param white_threshold:  Luma above which no tweak is applied; gradient in between.
+    :param dark_sat:         Saturation multiplier for dark pixels. Default 0.8.
+    :param dark_bright:      Brightness offset for dark pixels. Default -0.10.
+    :param scenechange:      If True, process only scene-change frames. Default True.
+    :param chroma_adjust:    Chroma adjustment string applied before luma merge. 'none' = disabled.
+    :return:                 Tweaked RGB24 clip.
+    """
     def merge_frame(n, f, black_limit: float = 0.3, white_limit: float = 0.6, dark_bright: float = -0.10,
                     dark_sat: float = 0.8, scenechange: bool = True, chroma_adjust: str = 'none'):
 
@@ -550,6 +700,10 @@ def vs_sc_chroma_bright_tweak(clip: vs.VideoNode = None, black_threshold: float 
 def vs_chroma_bright_tweak(clip: vs.VideoNode = None, black_threshold: float = 0.3, white_threshold: float = 0.6,
                            dark_sat: float = 0.8, dark_bright: float = -0.10,
                            chroma_adjust: str = 'none') -> vs.VideoNode:
+    """Desaturate and darken dark pixels on all frames (no scene-change gating).
+
+    Wrapper around vs_sc_chroma_bright_tweak with scenechange=False.
+    """
     return vs_sc_chroma_bright_tweak(clip, black_threshold, white_threshold, dark_sat, dark_bright,
                                      scenechange=False, chroma_adjust=chroma_adjust)
 
@@ -565,16 +719,40 @@ Direct color mapping using the "chroma adjustment".
 
 
 def vs_sc_colormap(clip: vs.VideoNode = None, colormap: str = 'none', scenechange: bool = True) -> vs.VideoNode:
+    """Apply a direct hue/colour mapping to a clip with optional scene-change gating.
+
+    Delegates to _vs_sc_colormap using image_chroma_tweak.
+
+    :param clip:        RGB24 input clip.
+    :param colormap:    Chroma adjustment string (e.g. "300:360|0.8,0.1"). 'none' = bypass.
+    :param scenechange: If True, process only scene-change frames. Default True.
+    :return:            Colour-mapped RGB24 clip.
+    """
     clip_m = _vs_sc_colormap(clip=clip, colormap=colormap, scenechange=scenechange)
 
     return clip_m
 
 
 def vs_colormap(clip: vs.VideoNode = None, colormap: str = 'none') -> vs.VideoNode:
+    """Apply a direct hue/colour mapping to all frames (no scene-change gating).
+
+    Wrapper around vs_sc_colormap with scenechange=False.
+
+    :param clip:     RGB24 input clip.
+    :param colormap: Chroma adjustment string. 'none' = bypass.
+    :return:         Colour-mapped RGB24 clip.
+    """
     return vs_sc_colormap(clip, colormap, scenechange=False)
 
 
 def _vs_sc_colormap(clip: vs.VideoNode = None, colormap: str = 'none', scenechange: bool = False) -> vs.VideoNode:
+    """Internal implementation of the colormap filter using std.ModifyFrame + image_chroma_tweak.
+
+    :param clip:        RGB24 input clip.
+    :param colormap:    Chroma adjustment string. 'none' = bypass.
+    :param scenechange: If True, process only scene-change frames.
+    :return:            Colour-mapped RGB24 clip.
+    """
     def merge_frame(n, f, chroma_adjust: str = 'none', scenechange: bool = True):
 
         if scenechange:
@@ -609,6 +787,18 @@ dark_threshold.
 def vs_sc_dark_tweak(clip: vs.VideoNode = None, dark_threshold: float = 0.3, dark_amount: float = 0.8,
                      scenechange: bool = True,
                      dark_hue_adjust: str = 'none') -> vs.VideoNode:
+    """Darken and desaturate dark scene areas with optional scene-change gating.
+
+    Converts dark_threshold and dark_amount to luma/saturation parameters and builds a
+    gradient mask from 0.1 to dark_threshold to blend the darkened frame with the original.
+
+    :param clip:            RGB24 input clip.
+    :param dark_threshold:  Luma threshold for dark-area selection [0, 1]. Default 0.3.
+    :param dark_amount:     Degree of darkening/desaturation [0, 1]. Default 0.8.
+    :param scenechange:     If True, process only scene-change frames. Default True.
+    :param dark_hue_adjust: Hue range for targeted darkening. 'none' = all hues.
+    :return:                Tweaked RGB24 clip.
+    """
     d_threshold = 0.1
     d_white_thresh = min(max(dark_threshold, d_threshold), 0.50)
     d_sat = min(max(1.1 - dark_amount, 0.10), 0.80)
@@ -638,6 +828,10 @@ def vs_sc_dark_tweak(clip: vs.VideoNode = None, dark_threshold: float = 0.3, dar
 
 def vs_dark_tweak(clip: vs.VideoNode = None, dark_threshold: float = 0.3, dark_amount: float = 0.8,
                   dark_hue_adjust: str = 'none') -> vs.VideoNode:
+    """Darken and desaturate dark scene areas on all frames (no scene-change gating).
+
+    Wrapper around vs_sc_dark_tweak with scenechange=False.
+    """
     return vs_sc_dark_tweak(clip, dark_threshold, dark_amount, scenechange=False, dark_hue_adjust=dark_hue_adjust)
 
 
@@ -655,6 +849,20 @@ of the clip if the average luma is below the parameter "gamma_luma_min"
 
 def sc_constrained_tweak(clip: vs.VideoNode = None, luma_min: float = 0.1, gamma: float = 1, gamma_luma_min: float = 0,
                          gamma_alpha: float = 0, gamma_min: float = 0.5, scenechange: bool = True) -> vs.VideoNode:
+    """Force minimum luma and apply adaptive gamma correction with optional scene-change gating.
+
+    Delegates to luma_adjusted_levels per frame. When luma is below gamma_luma_min,
+    gamma is applied (optionally decaying with luma when gamma_alpha != 0).
+
+    :param clip:           RGB24 input clip.
+    :param luma_min:       Minimum average luma target (fraction [0, 1]). Default 0.1.
+    :param gamma:          Gamma exponent applied when luma < gamma_luma_min. Default 1 (no-op).
+    :param gamma_luma_min: Luma threshold below which gamma activates. Default 0 (disabled).
+    :param gamma_alpha:    Power for adaptive gamma decay. Default 0 (constant).
+    :param gamma_min:      Minimum gamma value. Default 0.5.
+    :param scenechange:    If True, process only scene-change frames. Default True.
+    :return:               Luma-adjusted RGB24 clip.
+    """
     def change_frame(n, f, luma_min: float = 0.1, gamma: float = 1, gamma_luma_min: float = 0,
                      gamma_alpha: float = 0, gamma_min: float = 0.5, scenechange: bool = True):
 
@@ -677,6 +885,10 @@ def sc_constrained_tweak(clip: vs.VideoNode = None, luma_min: float = 0.1, gamma
 
 def constrained_tweak(clip: vs.VideoNode = None, luma_min: float = 0.1, gamma: float = 1, gamma_luma_min: float = 0,
                       gamma_alpha: float = 0, gamma_min: float = 0.5) -> vs.VideoNode:
+    """Force minimum luma and adaptive gamma on all frames (no scene-change gating).
+
+    Wrapper around sc_constrained_tweak with scenechange=False.
+    """
     return sc_constrained_tweak(clip, luma_min, gamma, gamma_luma_min, gamma_alpha, gamma_min, scenechange=False)
 
 
@@ -693,6 +905,20 @@ with the support of scene change detection.
 
 def vs_sc_tweak(clip: vs.VideoNode = None, hue: float = 0, sat: float = 1, cont: float = 1.0, bright: float = 0,
                 gamma: float = 1.0, scenechange: bool = True) -> vs.VideoNode:
+    """Adjust hue, saturation, brightness, contrast, and gamma with optional scene-change gating.
+
+    When scenechange=False delegates directly to vs_tweak (YUV-based, faster).
+    When scenechange=True processes only scene-change frames via ModifyFrame.
+
+    :param clip:        RGB24 input clip.
+    :param hue:         Hue rotation in degrees [-180, +180]. Default 0.
+    :param sat:         Saturation multiplier [0, 10]. Default 1.
+    :param cont:        Contrast factor [0, 10]. Default 1.0.
+    :param bright:      Brightness offset added to luma [-255, +255]. Default 0.
+    :param gamma:       Gamma exponent [-10, +10]. Default 1.0.
+    :param scenechange: If True, process only scene-change frames. Default True.
+    :return:            Adjusted RGB24 clip.
+    """
     if hue == 0 and sat == 1 and cont == 1 and bright == 0 and gamma == 1:
         return clip  # non changes
 
@@ -728,6 +954,15 @@ Wrapper to vapoursynth function Merge.
 
 
 def vs_simple_merge(clipa: vs.VideoNode, clipb: vs.VideoNode, weight: float = 0.5) -> vs.VideoNode:
+    """Thin wrapper around std.Merge: result = clipa * (1 - weight) + clipb * weight.
+
+    Returns clipa unchanged when weight==0 and clipb when weight==1.
+
+    :param clipa:  Base clip.
+    :param clipb:  Overlay clip.
+    :param weight: Weight assigned to clipb [0, 1]. Default 0.5.
+    :return:       Merged clip.
+    """
     # convert the format for Merge to YUV 8bits
 
     # A zero weight means that clipa is returned unchanged and 1 means that clipb is returned unchanged
@@ -863,6 +1098,18 @@ Function to copy the luma of video Clip "orig" in the video "clip"
 def vs_sc_recover_clip_luma(orig: vs.VideoNode = None, clip: vs.VideoNode = None, scenechange: bool = False,
                             sc_framedir: str = None, ref_ext: str = DEF_EXPORT_FORMAT,
                             ref_jpg_quality: int = DEF_JPG_QUALITY) -> vs.VideoNode:
+    """Replace the luma (Y) of clip with the luma from orig, preserving clip's chroma.
+
+    Optionally exports the merged frames at scene-change positions to sc_framedir.
+
+    :param orig:           Source of luma (RGB24); determines sharpness/detail.
+    :param clip:           Source of chroma (RGB24); coloured output.
+    :param scenechange:    If True, export scene-change frames to disk. Default False.
+    :param sc_framedir:    Directory for exported reference frames. None = no export.
+    :param ref_ext:        File extension for exported frames (e.g. 'png', 'jpg').
+    :param ref_jpg_quality: JPEG quality when ref_ext is 'jpg'. Default DEF_JPG_QUALITY.
+    :return:               RGB24 clip with luma from orig and chroma from clip.
+    """
     def copy_luma_frame(n, f, sc_framedir: str, ref_ext: str, ref_jpg_quality: int):
 
         img_orig = frame_to_image(f[0])
@@ -896,6 +1143,14 @@ def vs_sc_recover_clip_luma(orig: vs.VideoNode = None, clip: vs.VideoNode = None
 
 
 def vs_recover_clip_luma(orig: vs.VideoNode = None, clip: vs.VideoNode = None) -> vs.VideoNode:
+    """Replace the luma of clip with the luma from orig (no export, no scene-change check).
+
+    Wrapper around vs_sc_recover_clip_luma with scenechange=False.
+
+    :param orig: Source of luma (RGB24).
+    :param clip: Source of chroma (RGB24).
+    :return:     RGB24 clip with Y from orig and UV from clip.
+    """
     return vs_sc_recover_clip_luma(orig, clip, scenechange=False)
 
 
@@ -911,6 +1166,15 @@ if = 0 the filter is not applied. It is based on function KNLMeansCL() with GPU 
 
 
 def vs_degrain(clip: vs.VideoNode = None, strength: int = 1, device_id: int = 0) -> vs.VideoNode:
+    """Remove luma noise/grain using KNLMeansCL with GPU acceleration.
+
+    Converts to YUV420P8, applies KNLMeansCL on the Y plane, converts back to RGB24.
+
+    :param clip:      RGB24 input clip.
+    :param strength:  Denoise strength [1, 5]; maps to KNLMeansCL h/d parameters. 0 = bypass.
+    :param device_id: GPU device ordinal for KNLMeansCL. Default 0.
+    :return:          Denoised RGB24 clip.
+    """
     if strength == 0:
         return clip
 
@@ -953,6 +1217,13 @@ This filter return a mask calculated on luma range..
 
 def vs_luma_mask(clip: vs.VideoNode = None, luma_mask_limit: float = 0.4,
                  luma_white_limit: float = 0.7) -> vs.VideoNode:
+    """Return a clip of luma-based masks (for testing/debugging only).
+
+    :param clip:            RGB24 input clip.
+    :param luma_mask_limit: Luma threshold for full selection. Default 0.4.
+    :param luma_white_limit: Luma threshold for no selection (gradient in between). Default 0.7.
+    :return:                Clip of binary/gradient mask images.
+    """
     def mask_frame(n, f, luma_limit: float = 0.4, white_limit: float = 0.7):
         img1 = frame_to_image(f)
         if luma_limit == white_limit:
@@ -979,6 +1250,16 @@ Vapoursynth version of AdaptiveLumaMerge (very slow).
 
 def vs_adaptive_Merge(clipa: vs.VideoNode = None, clipb: vs.VideoNode = None,
                       clipb_weight: float = 0.0) -> vs.VideoNode:
+    """VapourSynth-native adaptive luma merge (for testing only; very slow).
+
+    Computes per-frame luma via PlaneStats and merges clips with an adaptive weight.
+    Use AdaptiveLumaMerge in mcomb.py for production use.
+
+    :param clipa:        Base clip.
+    :param clipb:        Overlay clip.
+    :param clipb_weight: Maximum weight for clipb. Default 0.0.
+    :return:             Merged clip.
+    """
     # Vapoursynth version
     def merge_frame(n, f, core, clipa: vs.VideoNode = None, clipb: vs.VideoNode = None, clipb_weight: float = 0.0):
         clip1 = clipa[n]
@@ -1011,6 +1292,14 @@ color balance of the individual frames.
 """
 
 def vs_rgb_normalize(clip: vs.VideoNode) -> vs.VideoNode:
+    """Auto white-balance a clip by normalising each RGB plane to the same average level.
+
+    Per-frame PlaneStats are used to compute per-channel gain factors that equalise the
+    red, green, and blue averages to the maximum of the three.
+
+    :param clip: RGB24 input clip.
+    :return:     White-balanced RGB24 clip.
+    """
     rgb_clip = clip
     r_avg = vs.core.std.PlaneStats(rgb_clip, plane=0)
     g_avg = vs.core.std.PlaneStats(rgb_clip, plane=1)

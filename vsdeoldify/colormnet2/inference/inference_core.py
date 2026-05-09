@@ -1,8 +1,20 @@
-from vsdeoldify.colormnet.inference.memory_manager import MemoryManager
-from vsdeoldify.colormnet.model.network import ColorMNet
-from vsdeoldify.colormnet.model.aggregate import aggregate
+"""
+-------------------------------------------------------------------------------
+Author: Dan64
+Date: 2024-04-20
+version:
+LastEditors: Dan64
+LastEditTime: 2026-04-30
+-------------------------------------------------------------------------------
+Description:
+-------------------------------------------------------------------------------
+Inference Core for CMNET2
+"""
+from vsdeoldify.colormnet2.inference.memory_manager import MemoryManager
+from vsdeoldify.colormnet2.model.network import ColorMNet
+from vsdeoldify.colormnet2.model.aggregate import aggregate
 
-from vsdeoldify.colormnet.util.tensor_util import pad_divide_by, unpad
+from vsdeoldify.colormnet2.util.tensor_util import pad_divide_by, unpad
 import torch
 
 
@@ -43,6 +55,30 @@ class InferenceCore:
         # self.all_labels = [l.item() for l in all_labels]
         self.all_labels = all_labels
 
+    def load_reference(self, ref_lll, ref_ab):
+        """
+        Loads a reference frame into perm_mem without colorizing anything.
+        Can be called N times before starting colorization.
+        ref_lll: L channel replicated 3 times (3*H*W) of the reference frame
+        ref_ab:  ab channels (2*H*W) of the reference frame
+        """
+        divide_by = 112
+        ref_lll, pad = pad_divide_by(ref_lll, divide_by)
+        ref_lll = ref_lll.unsqueeze(0)
+        ref_ab, _ = pad_divide_by(ref_ab, divide_by)
+
+        key, shrinkage, selection, f16, _, _ = self.network.encode_key(
+            ref_lll, need_sk=True, need_ek=self.enable_long_term)
+
+        if self.memory.hidden is None:
+            self.memory.create_hidden_state(2, key)
+
+        value, _ = self.network.encode_value(
+            ref_lll, f16, self.memory.get_hidden(),
+            ref_ab.unsqueeze(0), is_deep_update=False)
+
+        self.memory.add_permanent_memory(key, shrinkage, value, self.all_labels)
+
     def step(self, image, mask=None, valid_labels=None, end=False):
         # image: 3*H*W
         # mask: num_objects*H*W or None
@@ -53,17 +89,13 @@ class InferenceCore:
 
         is_mem_frame = ((self.curr_ti - self.last_mem_ti >= self.mem_every) or (mask is not None)) and (not end)
         need_segment = (self.curr_ti > 0) and ((valid_labels is None) or (len(self.all_labels) != len(valid_labels)))
-        is_deep_update = (
-                                 (self.deep_update_sync and is_mem_frame) or  # synchronized
-                                 (
-                                             not self.deep_update_sync and self.curr_ti - self.last_deep_update_ti >= self.deep_update_every)
+        is_deep_update = ((self.deep_update_sync and is_mem_frame) or  # synchronized
+                          (not self.deep_update_sync and self.curr_ti - self.last_deep_update_ti >= self.deep_update_every)
                          # no-sync
                          ) and (not end)
         is_normal_update = (not self.deep_update_sync or not is_deep_update) and (not end)
 
-        key, shrinkage, selection, f16, f8, f4 = self.network.encode_key(image,
-                                                                         need_ek=(
-                                                                                     self.enable_long_term or need_segment),
+        key, shrinkage, selection, f16, f8, f4 = self.network.encode_key(image, need_ek=(self.enable_long_term or need_segment),
                                                                          need_sk=is_mem_frame)
         multi_scale_features = (f16, f8, f4)
 
@@ -127,23 +159,18 @@ class InferenceCore:
 
         is_mem_frame = ((self.curr_ti - self.last_mem_ti >= self.mem_every) or (msk_ab is not None)) and (not end)
         need_segment = (self.curr_ti >= 0) and ((valid_labels is None) or (
-                    len(self.all_labels) != len(valid_labels))) if not flag_FirstframeIsExemplar else (
-                                                                                                                  self.curr_ti > 0) and (
-                                                                                                                  (
-                                                                                                                              valid_labels is None) or (
-                                                                                                                              len(self.all_labels) != len(
-                                                                                                                          valid_labels)))
-        is_deep_update = (
-                                 (self.deep_update_sync and is_mem_frame) or  # synchronized
-                                 (
-                                             not self.deep_update_sync and self.curr_ti - self.last_deep_update_ti >= self.deep_update_every)
+                    len(self.all_labels) != len(valid_labels))) if not flag_FirstframeIsExemplar else (self.curr_ti > 0) and (
+                                                                                                 (valid_labels is None) or (
+                                                                                                 len(self.all_labels) != len(
+                                                                                                 valid_labels)))
+        is_deep_update = ( (self.deep_update_sync and is_mem_frame) or  # synchronized
+                           (not self.deep_update_sync and self.curr_ti - self.last_deep_update_ti >= self.deep_update_every)
                          # no-sync
                          ) and (not end)
         is_normal_update = (not self.deep_update_sync or not is_deep_update) and (not end)
 
         key, shrinkage, selection, f16, f8, f4 = self.network.encode_key(image,
-                                                                         need_ek=(
-                                                                                     self.enable_long_term or need_segment),
+                                                                         need_ek=(self.enable_long_term or need_segment),
                                                                          need_sk=is_mem_frame)
         multi_scale_features = (f16, f8, f4)
 
@@ -155,9 +182,8 @@ class InferenceCore:
             msk_lll, _ = pad_divide_by(msk_lll, divide_by)
             msk_lll = msk_lll.unsqueeze(0)  # add the batch dimension
             key_mask, shrinkage_mask, selection_mask, f16_mask, f8_mask, f4_mask = self.network.encode_key(msk_lll,
-                                                                                                           need_ek=(
-                                                                                                                       self.enable_long_term or need_segment),
-                                                                                                           need_sk=is_mem_frame)
+                                                                          need_ek=(self.enable_long_term or need_segment),
+                                                                                   need_sk=is_mem_frame)
 
             msk_ab, _ = pad_divide_by(msk_ab, divide_by)
             pred_prob_with_bg = msk_ab
@@ -175,6 +201,10 @@ class InferenceCore:
 
                 self.last_ti_key = key_mask
                 self.last_ti_value = value_mask
+
+                self.memory.add_permanent_memory(
+                    key_mask, shrinkage_mask, value_mask, self.all_labels
+                )
             except:
                 pass
 

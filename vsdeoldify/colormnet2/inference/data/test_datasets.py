@@ -2,7 +2,7 @@ import os
 from os import path
 import json
 
-from vsdeoldify.colormnet.inference.data.video_reader import VideoReader_221128_TransColorization
+from vsdeoldify.colormnet2.inference.data.video_reader import VideoReader_221128_TransColorization
 
 
 class DAVISTestDataset_221128_TransColorization_batch:

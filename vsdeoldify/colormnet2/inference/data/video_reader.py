@@ -8,7 +8,7 @@ import torch.nn.functional as Ff
 from PIL import Image
 import numpy as np
 
-from vsdeoldify.colormnet.dataset.range_transform import im_normalization, im_rgb2lab_normalization, ToTensor, RGB2Lab
+from vsdeoldify.colormnet2.dataset.range_transform import im_normalization, im_rgb2lab_normalization, ToTensor, RGB2Lab
 
 class VideoReader_221128_TransColorization(Dataset):
     """

@@ -261,7 +261,13 @@ Wrapper to ReduceFlicker
 """
 
 def vs_reduce_flicker(clip: vs.VideoNode, strength: int = 2, aggressive: int = 0) -> vs.VideoNode:
+    """Reduce temporal brightness flickering using the ReduceFlicker VapourSynth plugin.
 
+    :param clip:       Input clip, any format supported by ReduceFlicker.dll.
+    :param strength:   Strength of flicker reduction [1, 3]. Default 2.
+    :param aggressive: Enable aggressive mode (0 = off, 1 = on). Default 0.
+    :return:           De-flickered clip.
+    """
     load_ReduceFlicker_plugin()
 
     try:
@@ -281,7 +287,15 @@ Wrapper to TimeCube
 """
 
 def vs_timecube_load(clip: vs.VideoNode, lut_effect: int = DEF_LUT_Exploration) -> vs.VideoNode:
+    """Load and apply a .cube LUT file to a clip via the TimeCube VapourSynth plugin.
 
+    Selects one of 12 built-in LUT presets (0–11) from the TimeCube colour directory.
+    Returns the original clip unchanged if the .cube file is not found.
+
+    :param clip:       RGB24 input clip.
+    :param lut_effect: LUT preset ID (0–11), mapped to constants DEF_LUT_*. Default: DEF_LUT_Exploration.
+    :return:           Clip with LUT applied.
+    """
     load_TimeCube_plugin()
 
     f_name: str = ""
@@ -323,7 +337,19 @@ def vs_timecube_load(clip: vs.VideoNode, lut_effect: int = DEF_LUT_Exploration) 
     return clip_new
 
 def vs_timecube(clip: vs.VideoNode, strength: float = 1.0, lut_effect: int = DEF_LUT_Exploration, factors: list = None) -> vs.VideoNode:
+    """Apply a TimeCube LUT with optional per-LUT colour tweaks and blend strength.
 
+    Loads the LUT via vs_timecube_load, applies preset hue/sat/bright/cont/gamma
+    adjustments tuned for each LUT, then blends the result back with the original
+    clip at the requested strength.  If factors is provided it overrides the preset
+    adjustments.
+
+    :param clip:       RGB24 input clip.
+    :param strength:   Blend weight of the LUT result [0, 1]. 0 = bypass, 1 = full LUT.
+    :param lut_effect: LUT preset ID (0–11). Default: DEF_LUT_Exploration.
+    :param factors:    Optional override list [hue, sat, bright, cont, gamma].
+    :return:           Colour-graded clip.
+    """
     if strength == 0:
         return clip   # nothing to do
 

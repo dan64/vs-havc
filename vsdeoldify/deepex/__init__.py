@@ -47,13 +47,24 @@ def deepex_colorizer(image_size: list = [432, 768], enable_resize: bool = False)
     return ModelColorizer(image_size=image_size, enable_resize=enable_resize, project_dir=package_dir)
 
 
-def get_deepex_size(render_speed: str = 'medium', enable_resize: bool = False, ex_model: int = 1) -> list:
+def get_deepex_size(render_speed: str = 'medium', enable_resize: bool = False, ex_model: int = 1,
+                    max_size: int = 0) -> list:
     if enable_resize:
         scale = 2
     else:
         scale = 1
 
     d_size = None
+
+    if max_size == 0:
+        max_size = 768
+
+    if render_speed == 'auto':
+        list_w = [256, 384, 512, 640]
+        list_h = [144, 216, 288, 360]
+        index_i = min(range(len(list_w)), key=lambda i: abs(list_w[i]*scale - max_size))
+        d_size = [list_h[index_i]*scale, list_w[index_i]*scale]
+        return d_size
 
     if ex_model in (0, 1, 3):
         match render_speed:

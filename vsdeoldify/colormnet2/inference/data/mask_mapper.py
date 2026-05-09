@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from vsdeoldify.colormnet.dataset.util import all_to_onehot
+from vsdeoldify.colormnet2.dataset.util import all_to_onehot
 
 
 class MaskMapper:

@@ -25,7 +25,9 @@ class BaseFilter(IFilter):
         super().__init__()
         self.learn = learn
         
-        if not device_settings.is_gpu():
+        if device_settings.is_gpu():
+            self.learn.model = self.learn.model.cuda()
+        else:
             self.learn.model = self.learn.model.cpu()
         
         self.device = next(self.learn.model.parameters()).device

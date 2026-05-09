@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-02-29
 version: 
 LastEditors: Dan64
-LastEditTime: 2026-04-06
+LastEditTime: 2026-05-08
 ------------------------------------------------------------------------------- 
 Description:
 ------------------------------------------------------------------------------- 
@@ -15,6 +15,7 @@ DDColor: https://github.com/HolyWu/vs-ddcolor
 Colorization: https://github.com/richzhang/colorization
 Deep-Exemplar: https://github.com/zhangmozhe/Deep-Exemplar-based-Video-Colorization
 ColorMNet: https://github.com/yyang181/colormnet
+CMNET2: https://github.com/dan64/cmnet2
 Deep-Remaster: https://github.com/satoshiiizuka/siggraphasia2019_remastering
 """
 from __future__ import annotations
@@ -43,7 +44,7 @@ from vsdeoldify.vsslib.vsplugins import vs_reduce_flicker, vs_timecube
 from vsdeoldify.vsslib.vsretinex import vs_retinex
 from vsdeoldify.vsslib.vsutils import vs_sc_export_frames, vs_list_export_frames, HAVC_LogMessage, MessageType
 from vsdeoldify.vsslib.vsutils import frame_to_image
-from vsdeoldify.vsslib.vsresize import SmartResizeColorizer, SmartResizeReference
+from vsdeoldify.vsslib.vsresize import SmartResizeColorizer, SmartResizeReference, get_render_size
 from vsdeoldify.vsslib.vsscdect import SceneDetectFromDir, SceneDetect, CopySCDetect
 from vsdeoldify.vsslib.vsscdect import get_sc_props, vs_mv_sc_detect, vs_sc_xvid
 from vsdeoldify.vsslib.vsscdetect_edge import SceneDetectEdges
@@ -58,7 +59,7 @@ import vsdeoldify.remaster
 
 import vsdeoldify.vsslib.constants as constants
 
-__version__ = "5.6.7"
+__version__ = "5.8.0"
 
 import warnings
 import logging
@@ -98,14 +99,14 @@ Description:
 wrapper to HAVC filter with "presets" management
 """
 
-def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0,  ColorModel: str = 'Video+Artistic',
-              CombMethod: str = 'Simple',  VideoTune: str = 'Stable', ColorFix: str = 'Magenta/Violet',
-              ColorTune: str = 'Light', ColorMap: str = 'None', ColorTemp: str = "None", BlackWhiteTune: str = 'None',
-              BlackWhiteMode: int = 0, BlackWhiteBlend: bool = True, EnableDeepEx: bool = False, DeepExMethod: int = 0,
-              DeepExPreset: str = 'Medium', DeepExRefMerge: int = 0, DeepExOnlyRefFrames: bool = False,
-              ScFrameDir: str = None, ScThreshold: float = constants.DEF_THRESHOLD, ScThtOffset: int = 1, ScMinFreq: int = 0,
+def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0,  ColorModel: str = 'Video+ModelScope',
+              CombMethod: str = 'Simple',  VideoTune: str = 'VeryVivid', ColorFix: str = 'Retinex/Red',
+              ColorTune: str = 'Light', ColorMap: str = 'Red->Brown', ColorTemp: str = "None", BlackWhiteTune: str = 'Light',
+              BlackWhiteMode: int = 0, BlackWhiteBlend: bool = True, EnableDeepEx: bool = True, DeepExMethod: int = 0,
+              DeepExPreset: str = 'Auto', DeepExRefMerge: int = 0, DeepExOnlyRefFrames: bool = False,
+              ScFrameDir: str = None, ScThreshold: float = constants.DEF_THRESHOLD, ScThtOffset: int = 1, ScMinFreq: int = 15,
               ScMinInt: int = 1, ScThtSSIM: float = 0.0, ScNormalize: bool = False, DeepExModel: int = 0,
-              DeepExVivid: bool = True, DeepExEncMode: int = 0, DeepExMaxMemFrames=0, RefRange: tuple[int, int] = (0, 0),
+              DeepExVivid: bool = False, DeepExEncMode: int = 0, DeepExMaxMemFrames=20, RefRange: tuple[int, int] = (0, 0),
               enable_fp16: bool = True, debug_level: int = 0) -> vs.VideoNode:
     """Main HAVC function supporting the Presets
 
@@ -127,9 +128,9 @@ def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0, 
                                 frames, suggested value is 3. Range [0-10], Default = 0
     :param ColorModel:          Preset to control the Color Models to be used for the color inference
                                 Allowed values are:
-                                    'Video+Artistic'  (default)
+                                    'Video+Artistic'
                                     'Stable+Artistic'
-                                    'Video+ModelScope'
+                                    'Video+ModelScope' (default)
                                     'Stable+ModelScope'
                                     'Artistic+Modelscope'
                                     'Video+Siggraph17'
@@ -153,17 +154,17 @@ def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0, 
                                 Allowed values are:
                                     'VeryStable',
                                     'MoreStable'
-                                    'Stable',  (default)
+                                    'Stable',
                                     'Balanced',
                                     'Vivid',
                                     'MoreVivid',
-                                    'VeryVivid',
+                                    'VeryVivid',  (default)
     :param ColorFix:            This parameter allows to reduce color noise on specific chroma ranges.
                                 Allowed values are:
                                     'None',
-                                    'Retinex/Red'
+                                    'Retinex/Red'   (default)
                                     'Magenta',
-                                    'Magenta/Violet',   (default)
+                                    'Magenta/Violet',
                                     'Violet',
                                     'Violet/Red',
                                     'Blue/Magenta',
@@ -178,14 +179,14 @@ def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0, 
                                     'Strong',
     :param ColorMap:            This parameter allows to change a given color range to another color.
                                 Allowed values are:
-                                    'None', (default)
+                                    'None',
                                     'Blue->Brown',
                                     'Blue->Red',
                                     'Blue->Green',
                                     'Green->Brown',
                                     'Green->Red',
                                     'Green->Blue',
-                                    'Red->Brown',
+                                    'Red->Brown',  (default)
                                     'Red->Blue'
                                     'Yellow->Rose'
     :param ColorTemp:           Strength of the color temporal stabilization filter. This post process filter will be
@@ -199,8 +200,8 @@ def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0, 
                                         "Very Low"
     :param BlackWhiteTune:      This parameter allows to improve contrast and luminosity of frames colored with HAVC.
                                 Allowed values are:
-                                    'None' (default)
-                                    'Light',
+                                    'None'
+                                    'Light',  (default)
                                     'Medium',
                                     'Strong'
     :param BlackWhiteMode:      Method used by BlackWhiteTune to perform colors adjustments.
@@ -215,7 +216,7 @@ def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0, 
     :param BlackWhiteBlend:     If enabled the frames adjusted with BlackWhiteTune will be blended with the original frames.
                                 Default = True 
     :param EnableDeepEx:        Enable coloring using "Exemplar-based" Video Colorization models.
-                                Default = False 
+                                Default = True
     :param DeepExMethod:        Method to use to generate reference frames.
                                         0 = HAVC same as video (default)
                                         1 = HAVC + RF same as video
@@ -226,9 +227,11 @@ def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0, 
                                         6 = external ClipRef different from video
     :param DeepExPreset:        Preset to control the render method and speed:
                                 Allowed values are:
-                                        'Fast'   (colors are more washed out)
-                                        'Medium' (colors are a little washed out) (default)
-                                        'Slow'   (colors are a little more vivid)
+                                        'Auto'   : will be automatically assigned the optimal render size (default)
+                                        'Fast'   : colors are more washed out
+                                        'Medium' : colors are a little washed out
+                                        'Slow'   : colors are a little more vivid
+                                        'Slower' : colors are more accurate (usually is very slow)
     :param DeepExRefMerge:      Method used by DeepEx to merge the reference frames with the frames propagated by DeepEx.
                                 It is applicable only with DeepEx method: 0, 1, 2.
                                 Allowed values are:
@@ -242,15 +245,17 @@ def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0, 
                                 and eventually correct the frames with wrong colors (can be used only if DeepExMethod = 0).
                                 Default = False
     :param DeepExModel:         Exemplar Model used by DeepEx to propagate color frames.
-                                        0 : ColorMNet (default)
+                                        0 : CMNET2 (default)
                                         1 : Deep-Exemplar
                                         2 : Deep-Remaster
-    :param DeepExVivid:         Depending on selected DeepExModel, if enabled (True):
-                                    0) ColorMNet: the frames memory is reset at every reference frame update
+                                        3 : ColorMNet
+    :param DeepExVivid:         Depending on selected DeepExModel, if enabled:
+                                    0) CMNET2: the saturation will be increased by about 15%.
                                     1) Deep-Exemplar: the saturation will be increased by about 25%.
                                     2) Deep-Remaster: the saturation will be increased by about 20% and Hue by +10.
-                                range [True, False]. Default = True
-    :param DeepExEncMode:       Parameter used by ColorMNet to define the encode mode strategy.
+                                    3) ColorMNet: the frames memory is reset at every reference frame update
+                                range [True, False]. Default = False
+    :param DeepExEncMode:       Parameter used by CMNET2/ColorMNet to define the encode mode strategy.
                                 Available values are:
                                      0: remote encoding. The frames will be colored by a thread outside Vapoursynth.
                                                          This option don't have any GPU memory limitation and will allow
@@ -262,25 +267,23 @@ def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0, 
                                                          Useful for coloring clips with a lot of smooth transitions,
                                                          since in this case is better to use a short frame memory or
                                                          the Deep-Exemplar model, which is faster.
-                                     2: remote all-ref   Same as "remote encoding" but all the available reference frames
-                                                         will be used for the inference at the beginning of encoding.
-    :param DeepExMaxMemFrames:  Parameter used by ColorMNet/DeepRemaster models.
+    :param DeepExMaxMemFrames:  Parameter used by CMNET2/ColorMNet/DeepRemaster models.
                                 For ColorMNet specify the max number of encoded frames to keep in memory. Default = 0
                                 Its value depend on encode mode and must be defined manually following the suggested values.
                                 DeepExEncMode=0: there is no memory limit (it could be all the frames in the clip).
                                 Suggested values are:
-                                    min=150, max=10000
-                                If = 0 will be filled with the value of 10000 or the clip length if lower.
+                                    min=50, max=5000
+                                If = 0 will be filled with the value of 5000 or the clip length if lower.
                                 DeepExEncMode=1: the max memory frames is limited by available GPU memory.
                                 Suggested values are:
-                                    min=1, max=4      : for 8GB GPU
-                                    min=1, max=8      : for 12GB GPU
-                                    min=1, max=15     : for 24GB GPU
+                                    min=1, max=2      : for 8GB GPU
+                                    min=1, max=4      : for 12GB GPU
+                                    min=1, max=6      : for 16GB GPU
                                 If = 0 will be filled with the max value (depending on total GPU RAM available)
-                                For DeepRemaster represent the number to reference frames to keep in memory.
+                                For CMNET2/DeepRemaster represent the number to reference frames to keep in memory.
                                 Suggested values are:
-                                    min=4, max=50
-                                If = 0 will be filled with the value of 20.
+                                    min=4, max=50 (100 CMNET2)
+                                If = 0 will be filled with the value of 20. Default = 20
     :param ScFrameDir:          if set, define the directory where are stored the reference frames that will be used
                                 by "Exemplar-based" Video Colorization models. With DeepExMethod 5,6 this parameter
                                 can be the path to a video clip. Default = None
@@ -293,7 +296,7 @@ def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0, 
                                 change, range[1, 25]. Default = 1.
     :param ScMinInt:            Minimum number of frame interval between scene changes, range[1, 25]. Default = 1.
     :param ScMinFreq:           if > 0 will be generated at least a reference frame every "ScMinFreq" frames.
-                                range [0-1500], default: 0.
+                                range [0-1500], default: 15.
     :param ScThtSSIM:           Threshold used by the SSIM (Structural Similarity Index Metric) selection filter.
                                 If > 0, will be activated a filter that will improve the scene-change detection,
                                 by discarding images that are similar.
@@ -313,17 +316,9 @@ def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0, 
     HAVC_set_debug_level(debug_level)
 
     # Select presets / tuning
-    speed_id, deoldify_rf, ddcolor_rf = havc_utils._get_render_factors(Preset)
-    if speed_id == 0:
-        return HAVC_placebo_preset(clip, CombMethod, VideoTune, ColorModel, ColorFix, ColorTune,
-               ColorMap, ColorTemp, FrameInterp, BlackWhiteTune, BlackWhiteMode, BlackWhiteBlend,
-               RefRange, enable_fp16, debug_level)
-    elif speed_id == 1:
-        return HAVC_veryslow_preset(clip, 'Slower', FrameInterp, ColorModel, CombMethod, VideoTune, ColorFix,
-               ColorTune, ColorMap, ColorTemp, BlackWhiteTune, BlackWhiteMode, BlackWhiteBlend, EnableDeepEx=False,
-               RefRange=RefRange, enable_fp16=enable_fp16, debug_level=debug_level)
-    else:
-        return HAVC_main_presets(clip, Preset, FrameInterp, ColorModel, CombMethod, VideoTune, ColorFix,
+    # speed_id, deoldify_rf, ddcolor_rf = havc_utils._get_render_factors(Preset)
+    
+    return HAVC_main_presets(clip, Preset, FrameInterp, ColorModel, CombMethod, VideoTune, ColorFix,
                ColorTune, ColorMap, ColorTemp, BlackWhiteTune, BlackWhiteMode, BlackWhiteBlend, EnableDeepEx,
                DeepExMethod, DeepExPreset, DeepExRefMerge, DeepExOnlyRefFrames, ScFrameDir, ScThreshold, ScThtOffset,
                ScMinFreq, ScMinInt, ScThtSSIM, ScNormalize, DeepExModel, DeepExVivid, DeepExEncMode, DeepExMaxMemFrames,
@@ -356,7 +351,12 @@ def HAVC_veryslow_preset(clip: vs.VideoNode, Preset: str = 'Slower', FrameInterp
                         BlackWhiteBlend: bool = True, EnableDeepEx: bool = False, DeepExMethod: int = 0,
                         ScThreshold: float = 0.1, ScMinFreq: int = 0, RefRange: tuple[int, int] = (0, 0),
                         enable_fp16: bool = True, debug_level: int = 0) -> vs.VideoNode:
+        """Internal colorization pipeline: runs DeOldify and DDColor separately,
+        applies per-model colour and contrast tweaks, then merges the two results.
 
+        This nested function is called by HAVC_veryslow_preset to build the base colourised
+        clip before any temporal stabilisation (ColorTemp) or frame interpolation is applied.
+        """
         deoldify_model, ddcolor_model = havc_utils._spit_color_model(ColorModel)
         # -- Clip1: DeOldify --------------------------
         if deoldify_model != "none":
@@ -391,7 +391,9 @@ def HAVC_veryslow_preset(clip: vs.VideoNode, Preset: str = 'Slower', FrameInterp
             dd_method = havc_utils._get_comb_method(CombMethod)
             clip_color = HAVC_merge(clipa=clip1, clipb=clip2, clip_luma=clip, weight=ddcolor_weight, method=dd_method)
         return clip_color
-
+    # -----------------------------------------------------------------------------------------------------------
+    # Start code for HAVC_veryslow_preset()
+    # -----------------------------------------------------------------------------------------------------------
     clip, orig_fmt = convert_format_RGB24(clip, chroma_resize=False)
 
     if FrameInterp == 0:  # Very Slow encoding (2x slower)
@@ -402,9 +404,9 @@ def HAVC_veryslow_preset(clip: vs.VideoNode, Preset: str = 'Slower', FrameInterp
         if color_temp > 0:
             clip_ref = clip_colored.std.SetFrameProp(prop="sc_threshold", floatval=0.1)
             clip_ref = clip_ref.std.SetFrameProp(prop="sc_frequency", intval=1)
-            clip_colored = HAVC_cmnet2(clip=clip, clip_ref=clip_ref, render_speed='Medium', render_vivid=True,
+            clip_colored = HAVC_cmnet2(clip=clip, clip_ref=clip_ref, render_speed='Medium', render_vivid=False,
                                      ref_merge=color_temp, dark=True, dark_p=[0.2, 0.8], ref_thresh=0.10,
-                                     encode_mode=0, max_memory_frames=0, ref_freq=0, ref_norm=True,
+                                     encode_mode=0, max_memory_frames=10, ref_freq=0, ref_norm=True,
                                      smooth=True, smooth_p=[0.3, 0.7, 0.9, 0.0, "none"], colormap="300:360|0.8,0.1")
 
     else:  # Faster Encoding, using ColorMNet as frame interpolator
@@ -446,9 +448,9 @@ def HAVC_placebo_preset(clip: vs.VideoNode, CombMethod: str = 'Simple', VideoTun
         if color_temp > 0:
             clip_ref = clip_colored.std.SetFrameProp(prop="sc_threshold", floatval=0.1)
             clip_ref = clip_ref.std.SetFrameProp(prop="sc_frequency", intval=1)
-            clip_colored = HAVC_cmnet2(clip=clip, clip_ref=clip_ref, render_speed='Medium', render_vivid=True,
+            clip_colored = HAVC_cmnet2(clip=clip, clip_ref=clip_ref, render_speed='Medium', render_vivid=False,
                                      ref_merge=color_temp, dark=True, dark_p=[0.2, 0.8], ref_thresh=0.10,
-                                     encode_mode=0, max_memory_frames=0, ref_freq=0, ref_norm=True,
+                                     encode_mode=0, max_memory_frames=1, ref_freq=0, ref_norm=True,
                                      smooth=True, smooth_p=[0.3, 0.7, 0.9, 0.0, "none"], colormap="300:360|0.8,0.1")
 
     else:  # Faster Encoding, using ColorMNet as frame interpolator
@@ -462,7 +464,7 @@ def HAVC_placebo_preset(clip: vs.VideoNode, CombMethod: str = 'Simple', VideoTun
         clip_ref = clip_colored.std.SetFrameProp(prop="sc_threshold", floatval=0.1)
         clip_ref = clip_ref.std.SetFrameProp(prop="sc_frequency", intval=ref_freq_temp)
         clip_colored = vs_frame_interpolation(clip=clip, clip_ref=clip_ref, frame_interp=FrameInterp,
-                                              chroma_adjust="300:360|0.8,0.1", process_id=2)
+                                              chroma_adjust="300:360|0.8,0.1", process_id=1)
 
     return restore_format(clip_colored, orig_fmt)
 
@@ -474,7 +476,7 @@ def HAVC_main_presets(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: i
                   DeepExRefMerge: int = 0, DeepExOnlyRefFrames: bool = False, ScFrameDir: str = None,
                   ScThreshold: float = constants.DEF_THRESHOLD, ScThtOffset: int = 1, ScMinFreq: int = 0,
                   ScMinInt: int = 1, ScThtSSIM: float = 0.0, ScNormalize: bool = False, DeepExModel: int = 0,
-                  DeepExVivid: bool = True, DeepExEncMode: int = 0, DeepExMaxMemFrames=0,
+                  DeepExVivid: bool = False, DeepExEncMode: int = 0, DeepExMaxMemFrames=0,
                   RefRange: tuple[int, int] = (0, 0),
                   enable_fp16: bool = True, debug_level: int = 0) -> vs.VideoNode:
     """
@@ -489,7 +491,7 @@ def HAVC_main_presets(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: i
     # Select presets / tuning
     speed_id, deoldify_rf, ddcolor_rf = havc_utils._get_render_factors(Preset)
 
-    chroma_resize: bool = (speed_id > 1)   # 'placebo' and 'veryslow' will not be downsized
+    chroma_resize: bool = (speed_id > constants.DEF_MIN_CPUID_RESIZE)   # 'placebo' and 'veryslow' will not be downsized
 
     clip, orig_fmt = convert_format_RGB24(clip, chroma_resize=chroma_resize)
 
@@ -538,10 +540,10 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
               DeepExMethod: int = 0, DeepExPreset: str = 'Medium', DeepExRefMerge: int = 0,
               DeepExOnlyRefFrames: bool = False, ScFrameDir: str = None, ScThreshold: float = constants.DEF_THRESHOLD,
               ScThtOffset: int = 1, ScMinFreq: int = 0, ScMinInt: int = 1, ScThtSSIM: float = 0.0,
-              ScNormalize: bool = False, DeepExModel: int = 0, DeepExVivid: bool = True, DeepExEncMode: int = 0,
+              ScNormalize: bool = False, DeepExModel: int = 0, DeepExVivid: bool = False, DeepExEncMode: int = 0,
               DeepExMaxMemFrames=0, FrameInterp: int = 0, RefRange: tuple[int, int] = (0, 0), enable_fp16: bool = True,
               debug_level: int = 0) -> vs.VideoNode:
-    """Main HAVC coloring function supporting the Presets
+    """Main HAVC function supporting the Presets
 
     :param clip:                clip to process, any format is supported.
     :param Preset:              Preset to control the encoding speed/quality.
@@ -551,9 +553,14 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
                                     'Slower',
                                     'Slow',
                                     'Medium', (default)
-                                    'Fast',  
+                                    'Fast',
                                     'Faster',
                                     'VeryFast'
+    :param FrameInterp:         This parameter will allow to enable the frame interpolation. This method will use
+                                Deep-Exemplar to interpolate the colored frames if FrameInterp < 5, otherwise will use
+                                ColorMNet. If = 0, the interpolation is disabled, if > 0 represent the number of frames
+                                used for interpolation. The quality of interpolation will decrease with the number of
+                                frames, suggested value is 3. Range [0-10], Default = 0
     :param ColorModel:          Preset to control the Color Models to be used for the color inference
                                 Allowed values are:
                                     'Video+Artistic'  (default)
@@ -626,7 +633,25 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
                                         "Medium"
                                         "Low"
                                         "Very Low"
-    :param EnableDeepEx:        Enable coloring using "Exemplar-based" Video Colorization models
+    :param BlackWhiteTune:      This parameter allows to improve contrast and luminosity of frames colored with HAVC.
+                                Allowed values are:
+                                    'None' (default)
+                                    'Light',
+                                    'Medium',
+                                    'Strong'
+    :param BlackWhiteMode:      Method used by BlackWhiteTune to perform colors adjustments.
+                                Allowed values are:
+                                        0 : CLAHE (luma) (default)
+                                        1 : Simple (RGB)
+                                        2 : CLAHE (RGB)
+                                        3 : CLAHE (luma) + Simple (RGB)
+                                        4 : ScaleAbs – LUT
+                                        5 : Multi-Scale Retinex (HAVC)
+                                        6 : Multi-Scale Retinex (B&W)
+    :param BlackWhiteBlend:     If enabled the frames adjusted with BlackWhiteTune will be blended with the original frames.
+                                Default = True
+    :param EnableDeepEx:        Enable coloring using "Exemplar-based" Video Colorization models.
+                                Default = False
     :param DeepExMethod:        Method to use to generate reference frames.
                                         0 = HAVC same as video (default)
                                         1 = HAVC + RF same as video
@@ -637,9 +662,11 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
                                         6 = external ClipRef different from video
     :param DeepExPreset:        Preset to control the render method and speed:
                                 Allowed values are:
-                                        'Fast'   (colors are more washed out)
-                                        'Medium' (colors are a little washed out)
-                                        'Slow'   (colors are a little more vivid)
+                                        'Auto'   : will be automatically assigned the optimal render size
+                                        'Fast'   : colors are more washed out
+                                        'Medium' : colors are a little washed out (default)
+                                        'Slow'   : colors are a little more vivid
+                                        'Slower' : colors are more accurate (usually is very slow)
     :param DeepExRefMerge:      Method used by DeepEx to merge the reference frames with the frames propagated by DeepEx.
                                 It is applicable only with DeepEx method: 0, 1, 2.
                                 Allowed values are:
@@ -650,18 +677,20 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
                                         4 = RF-Merge High (reference frames are merged with weight=0.6)
                                         5 = RF-Merge VeryHigh (reference frames are merged with weight=0.7)
     :param DeepExOnlyRefFrames: If enabled the filter will output in "ScFrameDir" the reference frames. Useful to check
-                                and eventually correct the frames with wrong colors
-                                (can be used only if DeepExMethod = 0)
+                                and eventually correct the frames with wrong colors (can be used only if DeepExMethod = 0).
+                                Default = False
     :param DeepExModel:         Exemplar Model used by DeepEx to propagate color frames.
-                                        0 : ColorMNet (default)
+                                        0 : CMNET2 (default)
                                         1 : Deep-Exemplar
                                         2 : Deep-Remaster
-    :param DeepExVivid:         Depending on selected DeepExModel, if enabled (True):
-                                    0) ColorMNet: the frames memory is reset at every reference frame update
+                                        3 : ColorMNet
+    :param DeepExVivid:         Depending on selected DeepExModel, if enabled:
+                                    0) CMNET2: the saturation will be increased by about 15%.
                                     1) Deep-Exemplar: the saturation will be increased by about 25%.
                                     2) Deep-Remaster: the saturation will be increased by about 20% and Hue by +10.
-                                range [True, False]
-    :param DeepExEncMode:       Parameter used by ColorMNet to define the encode mode strategy.
+                                    3) ColorMNet: the frames memory is reset at every reference frame update
+                                range [True, False]. Default = False
+    :param DeepExEncMode:       Parameter used by CMNET2/ColorMNet to define the encode mode strategy.
                                 Available values are:
                                      0: remote encoding. The frames will be colored by a thread outside Vapoursynth.
                                                          This option don't have any GPU memory limitation and will allow
@@ -673,33 +702,26 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
                                                          Useful for coloring clips with a lot of smooth transitions,
                                                          since in this case is better to use a short frame memory or
                                                          the Deep-Exemplar model, which is faster.
-                                     2: remote all-ref   Same as "remote encoding" but all the available reference frames
-                                                         will be used for the inference at the beginning of encoding.
-    :param DeepExMaxMemFrames:  Parameter used by ColorMNet/DeepRemaster models.
-                                For ColorMNet specify the max number of encoded frames to keep in memory.
+    :param DeepExMaxMemFrames:  Parameter used by CMNET2/ColorMNet/DeepRemaster models.
+                                For ColorMNet specify the max number of encoded frames to keep in memory. Default = 0
                                 Its value depend on encode mode and must be defined manually following the suggested values.
                                 DeepExEncMode=0: there is no memory limit (it could be all the frames in the clip).
                                 Suggested values are:
-                                    min=150, max=10000
-                                If = 0 will be filled with the value of 10000 or the clip length if lower.
+                                    min=50, max=5000
+                                If = 0 will be filled with the value of 5000 or the clip length if lower.
                                 DeepExEncMode=1: the max memory frames is limited by available GPU memory.
                                 Suggested values are:
-                                    min=1, max=4      : for 8GB GPU
-                                    min=1, max=8      : for 12GB GPU
-                                    min=1, max=15     : for 24GB GPU
+                                    min=1, max=2      : for 8GB GPU
+                                    min=1, max=4      : for 12GB GPU
+                                    min=1, max=6      : for 16GB GPU
                                 If = 0 will be filled with the max value (depending on total GPU RAM available)
-                                For DeepRemaster represent the number to reference frames to keep in memory.
+                                For CMNET2/DeepRemaster represent the number to reference frames to keep in memory.
                                 Suggested values are:
-                                    min=4, max=50
+                                    min=4, max=50 (100 CMNET2)
                                 If = 0 will be filled with the value of 20.
-    :param FrameInterp:         This parameter will allow to enable the frame interpolation. This method will use
-                                Deep-Exemplar to interpolate the colored frames if FrameInterp < 5, otherwise will use
-                                ColorMNet. If = 0, the interpolation is disabled, if > 0 represent the number of frames
-                                used for interpolation. The quality of interpolation will decrease with the number of
-                                frames, suggested value is 3. Range [0-10], Default = 0.
     :param ScFrameDir:          if set, define the directory where are stored the reference frames that will be used
-                                by "Exemplar-based" Video Colorization models. With DeepExMethod 5,6 this parameter 
-                                can be the path to a video clip.
+                                by "Exemplar-based" Video Colorization models. With DeepExMethod 5,6 this parameter
+                                can be the path to a video clip. Default = None
     :param ScThreshold:         Scene change threshold used to generate the reference frames to be used by
                                 "Exemplar-based" Video Colorization. It is a percentage of the luma change between
                                 the previous and the current frame. range [0-1], default 0.10. If =0 are not generate
@@ -720,7 +742,7 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
                                 provide the frame number of clip start and end. For example RefRange=(100, 500)
                                 will return the clip's slice: clip[100:500], if RefRange=(0, 0) will be considered all
                                 clip's frames.
-    :param enable_fp16:         Enable/disable FP16 in ddcolor inference, range [True, False]
+    :param enable_fp16:         Enable/disable FP16 in ddcolor inference, range [True, False]. Default = True
     :param debug_level:         Set the level of HAVC debug messages. Default = 0 (no messages)
     """
     # disable packages warnings
@@ -814,9 +836,9 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
                                     ddtweak=dd_tweak, ddtweak_p=[constants.DEF_TWEAK_p, hue_range],
                                     frame_interp=FrameInterp, chroma_adjust=chroma_adjust, debug_level=debug_level)
             if color_temp > 0:
-                clip_ref = HAVC_cmnet2(clip=clip, clip_ref=clip_ref, render_speed='Medium', render_vivid=True,
+                clip_ref = HAVC_cmnet1(clip=clip, clip_ref=clip_ref, render_speed='Medium', render_vivid=True,
                                        ref_merge=color_temp, dark=True, dark_p=[0.2, 0.8], ref_thresh=0.10,
-                                       encode_mode=0, max_memory_frames=0, ref_freq=0, ref_norm=True, smooth=True,
+                                       encode_mode=0, max_memory_frames=1, ref_freq=0, ref_norm=True, smooth=True,
                                        smooth_p=[0.3, 0.7, 0.9, 0.0, "none"], colormap=chroma_adjust)
 
             if DeepExMethod != constants.DEF_HAVC_METHOD_PLACEBO:
@@ -836,10 +858,15 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
 
     elif EnableDeepEx and DeepExMethod in (3, 4):
 
-        if DeepExModel == 2:
-            # call to faster version of DeepRemaster that read directly the images folder (mode=0)
+        if DeepExModel == 0:
+            clip_colored = HAVC_cmnet2(clip, clip_ref=None, method=DeepExMethod, render_speed=DeepExPreset,
+                render_vivid=DeepExVivid, ref_merge=0, sc_framedir=ScFrameDir, ref_norm=False, dark=False,
+                smooth=False, colormap=chroma_adjust, ref_weight=None, ref_thresh=None, ref_freq=None,
+                encode_mode=DeepExEncMode, max_memory_frames=DeepExMaxMemFrames)
+        elif DeepExModel == 2:
+            # call to faster version of DeepRemaster that read directly the images folder (ref_mode=0)
             clip_colored = HAVC_DeepRemaster(clip, render_vivid=DeepExVivid, ref_dir=ScFrameDir,
-                                             ref_buffer_size=DeepExMaxMemFrames, mode=0)
+                                             ref_buffer_size=DeepExMaxMemFrames, ref_mode=0)
 
         else:
             ref_merge = 0 if DeepExModel != 3 else DeepExRefMerge
@@ -888,9 +915,9 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
         if color_temp > 0:
             clip_colored = clip_colored.std.SetFrameProp(prop="sc_threshold", floatval=0.1)
             clip_colored = clip_colored.std.SetFrameProp(prop="sc_frequency", intval=1)
-            clip_colored = HAVC_cmnet2(clip=clip, clip_ref=clip_colored, render_speed='Medium', render_vivid=True,
+            clip_colored = HAVC_cmnet2(clip=clip, clip_ref=clip_colored, render_speed='Medium', render_vivid=False,
                                    ref_merge=color_temp, dark=True, dark_p=[0.2, 0.8], ref_thresh=0.10,
-                                   encode_mode=0, max_memory_frames=0, ref_freq=0, ref_norm=True, smooth=True,
+                                   encode_mode=0, max_memory_frames=1, ref_freq=0, ref_norm=True, smooth=True,
                                    smooth_p=[0.3, 0.7, 0.9, 0.0, "none"], colormap=chroma_adjust)
 
         if speed_id > 4:  # 'fast', 'faster', 'veryfast' -> is used only colormap
@@ -956,7 +983,7 @@ It is a wrapper to HAVC_main_restore()
 
 def HAVC_ColorAdjust(clip: vs.VideoNode, BlackWhiteTune: str = 'Light', BlackWhiteMode: int = 0,
                      BlackWhiteBlend: bool = True, ReColor: bool = True, Strength: int = 0, ScThreshold: float = 0.10,
-                     ScNormalize: bool = True, DeepExVivid: bool = True,  ScMinFreq: int = 0,
+                     ScNormalize: bool = True, DeepExVivid: bool = False,  ScMinFreq: int = 0,
                      chroma_resize: bool = False) -> vs.VideoNode:
     """HAVC Color Post Processing function
 
@@ -996,8 +1023,8 @@ def HAVC_ColorAdjust(clip: vs.VideoNode, BlackWhiteTune: str = 'Light', BlackWhi
         :param ScNormalize:        If true the frames are normalized before using misc.SCDetect(), the normalization
                                    will increase the sensitivity to smooth scene changes, range [True, False],
                                    default: True
-        :param DeepExVivid:        if enabled (True) the ColorMNet memory is reset at every reference frame update
-                                   range [True, False], default: True
+        :param DeepExVivid:        if enabled the saturation will be increased by about 15% (CMNET2).
+                                   range [True, False], default: False
         :param ScMinFreq:          if > 0 will be generated at least a reference frame every "ScMinFreq" frames.
                                    range [0-1500], default: 0.
         :param chroma_resize:      If True, the clip will be downscaled before applying the filter to speed up
@@ -1076,8 +1103,8 @@ def HAVC_retinex(clip: vs.VideoNode, luma_dark: float = constants.DEF_RETINEX_DA
     """patched filter Retinex MSRCP to avoid artifacts on dark/bright frames
 
            :param clip:           clip to process, any clip format is supported.
-           :param luma_dark:      luma level to identify dark frames, range [0-1], default = 0.15
-           :param luma_bright:    luma level to identify bright frames, range [0-1], default = 0.85
+           :param luma_dark:      luma level to identify dark frames, range [0-1], default = 0.20
+           :param luma_bright:    luma level to identify bright frames, range [0-1], default = 0.80
            :param sigmas:         sigma of Gaussian function to apply Gaussian filtering.
                                   Assign an array of multiple sigma to apply MSR. Default = [25, 80, 250]
                                   Basically, in SSR(Single Scale Retinex), small sigma result in stronger dynamic
@@ -1114,7 +1141,7 @@ with HAVC.
 def HAVC_main_restore(clip: vs.VideoNode, clip_colored: vs.VideoNode | None, DeepExPreset: str = 'medium',
                       DeepExModel: int = 0, DeepExRefMerge: int = 0, ScThreshold: float = constants.DEF_THRESHOLD,
                       ScMinFreq: int = 0, ScNormalize: bool = False, DeepExMaxMemFrames: int = 0, DeepExMethod: int = 5,
-                      DeepExVivid: bool = True, DeepExEncMode: int = 0, BlackWhiteTune: str = 'Medium',
+                      DeepExVivid: bool = False, DeepExEncMode: int = 0, BlackWhiteTune: str = 'Medium',
                       BlackWhiteMode: int = 0, BlackWhiteBlend: bool = True, chroma_resize: bool = False) -> vs.VideoNode:
     """Main HAVC restoring function
 
@@ -1122,9 +1149,9 @@ def HAVC_main_restore(clip: vs.VideoNode, clip_colored: vs.VideoNode | None, Dee
         :param clip_colored:       Clip containing the colored frames to be restored
         :param BlackWhiteTune:     This parameter allows to improve contrast and luminosity of frames colored with HAVC.
                                    Allowed values are:
-                                        'None' (default)
+                                        'None',
                                         'Light',
-                                        'Medium',
+                                        'Medium', (default)
                                         'Strong'
         :param BlackWhiteMode:     Method used by BlackWhiteTune to perform colors adjustments.
                                    Allowed values are:
@@ -1159,15 +1186,17 @@ def HAVC_main_restore(clip: vs.VideoNode, clip_colored: vs.VideoNode | None, Dee
                                             4 = RF-Merge High (reference frames are merged with weight=0.6)
                                             5 = RF-Merge VeryHigh (reference frames are merged with weight=0.7)
         :param DeepExModel:        Exemplar Model used by DeepEx to propagate color frames.
-                                            0 : ColorMNet (default)
+                                            0 : CMNET2 (default)
                                             1 : Deep-Exemplar
                                             2 : Deep-Remaster
-        :param DeepExVivid:        Depending on selected DeepExModel, if enabled (True):
-                                        0) ColorMNet: the frames memory is reset at every reference frame update
+                                            3 : ColorMNet
+        :param DeepExVivid:        Depending on selected DeepExModel, if enabled:
+                                        0) CMNET2: the saturation will be increased by about 15%.
                                         1) Deep-Exemplar: the saturation will be increased by about 25%.
                                         2) Deep-Remaster: the saturation will be increased by about 20% and Hue by +10.
-                                    range [True, False]
-        :param DeepExEncMode:      Parameter used by ColorMNet to define the encode mode strategy.
+                                        3) ColorMNet: the frames memory is reset at every reference frame update
+                                    range [True, False]. Default: False
+        :param DeepExEncMode:      Parameter used by CMNET2/ColorMNet to define the encode mode strategy.
                                    Available values are:
                                          0: remote encoding. The frames will be colored by a thread outside Vapoursynth.
                                                              This option don't have any GPU memory limitation and will allow
@@ -1419,11 +1448,12 @@ Exemplar-based coloring function with additional post-process filters
 
 
 def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method: int = 0, render_speed: str = 'medium',
-                render_vivid: bool = True, ref_merge: int = 0, sc_framedir: str = None, ref_norm: bool = False,
+                render_vivid: bool = False, ref_merge: int = 0, sc_framedir: str = None, ref_norm: bool = False,
                 only_ref_frames: bool = False, dark: bool = False, dark_p: list = (0.2, 0.8), smooth: bool = False,
                 smooth_p: list = (0.3, 0.7, 0.9, 0.0, "none"), colormap: str = "none", ref_weight: float = None,
                 ref_thresh: float = None, ref_freq: int = None, ex_model: int = 0, encode_mode: int = 0,
-                max_memory_frames: int = 0, torch_dir: str = model_dir) -> vs.VideoNode:
+                max_memory_frames: int = 0, retry_threshold: float = 0, high_resolution: bool = False,
+                torch_dir: str = model_dir) -> vs.VideoNode:
     """Towards Video-Realistic Colorization via Exemplar-based framework
 
     :param clip:                Clip to process, any format is supported
@@ -1438,14 +1468,17 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                                         6 = external ClipRef different from video
     :param render_speed:        Preset to control the render method and speed:
                                 Allowed values are:
-                                        'Fast'   (colors are more washed out)
-                                        'Medium' (colors are a little washed out)
-                                        'Slow'   (colors are a little more vivid)
+                                        'Auto'   : will be automatically assigned the optimal render size (default)
+                                        'Fast'   : colors are more washed out
+                                        'Medium' : colors are a little washed out
+                                        'Slow'   : colors are a little more vivid
+                                        'Slower' : colors are more accurate (usually is very slow)
     :param render_vivid:        Depending on selected ex_model, if enabled (True):
-                                    0) ColorMNet: the frames memory is reset at every reference frame update
+                                    0) CMNET2: the saturation will be increased by about 15%.
                                     1) Deep-Exemplar: the saturation will be increased by about 25%.
-                                    2) Deep-Remaster: the saturation will be increased by about 15%.
-                                range [True, False]
+                                    2) Deep-Remaster: the saturation will be increased by about 20% and Hue by +10.
+                                    3) ColorMNet: the frames memory is reset at every reference frame update
+                                range [True, False]. Default = False
     :param ref_merge:           Method used by DeepEx to merge the reference frames with the frames propagated by DeepEx.
                                 It is applicable only with DeepEx method: 0, 1, 5.
                                 The HAVC reference frames must be produced with frequency = 1.
@@ -1491,11 +1524,11 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
     :param colormap:            Direct hue/color mapping (only on ref-frames), without luma filtering, using the "chroma adjustment"
                                 parameter, if="none" is disabled.
     :param ex_model:            "Exemplar-based" model to use for the color propagation, available models are:
-                                    0 : ColorMNet (default)
+                                    0 : CMNET2 (default)
                                     1 : Deep-Exemplar
                                     2 : Deep-Remaster
-                                    3 : Deep-CMnet (Deep-Exemplar merged with ColorMNet)
-    :param encode_mode:         Parameter used by ColorMNet to define the encode mode strategy.
+                                    3 : ColorMNet
+    :param encode_mode:         Parameter used by CMNET2/ColorMNet to define the encode mode strategy.
                                 Available values are:
                                      0: remote encoding. The frames will be colored by a thread outside Vapoursynth.
                                                          This option don't have any GPU memory limitation and will allow
@@ -1507,8 +1540,6 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                                                          Useful for coloring clips with a lot of smooth transitions,
                                                          since in this case is better to use a short frame memory or
                                                          the Deep-Exemplar model, which is faster.
-                                     2: remote all-ref   Same as "remote encoding" but all the available reference frames
-                                                         will be used for the inference at the beginning of encoding.
     :param max_memory_frames:   Parameter used by ColorMNet/DeepRemaster models.
                                 For ColorMNet specify the max number of encoded frames to keep in memory.
                                 Its value depend on encode mode and must be defined manually following the suggested values.
@@ -1526,6 +1557,12 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                                 Suggested values are:
                                     min=2, max=50
                                 If = 0 will be filled with the value of 20.
+    :param retry_threshold:     (CMNET2 only) Threshold used to identify frames that may benefit from an additional
+                                reference frame (retry the colorization using: 60%*DeOldify + 40%*DDColor).
+                                Range [0.0, 1.0], Default=0.0 (disabled). High values (> 0.3) trigger more retry, while
+                                lower values (< 0.3) trigger less retry. Suggested value in the range: 0.20-0.35
+    :param high_resolution:     if true the resolution of the inference will be increased, this will improve the color
+                                accuracy, but the inference will be about 2x slower. default = False.
     :param torch_dir:           torch hub dir location, default is model directory, if set to None will switch
                                 to torch cache dir
     """
@@ -1601,7 +1638,7 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
         pathlib.Path(sc_framedir).mkdir(parents=True, exist_ok=True)
 
     # static params
-    enable_resize = False
+    enable_resize = high_resolution
 
     # unpack dark
     dark_enabled = dark
@@ -1659,12 +1696,12 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
 
     clip_orig = clip
 
-    # if ex_model == 0 and render_speed.lower() == 'fast':
-    #    render_speed = 'medium'
-
-    d_size = get_deepex_size(render_speed=render_speed.lower(), enable_resize=enable_resize, ex_model=ex_model)
-    smc = SmartResizeColorizer(clip_size=d_size, ex_model=ex_model)
-    smr = SmartResizeReference(clip_size=d_size, ex_model=ex_model)
+    if ex_model == 0:
+        d_size = get_render_size(clip.width, clip.height, render_speed=render_speed.lower())
+    else:
+        d_size = get_deepex_size(render_speed=render_speed.lower(), enable_resize=enable_resize, ex_model=ex_model)
+        smc = SmartResizeColorizer(clip_size=d_size, ex_model=ex_model)
+        smr = SmartResizeReference(clip_size=d_size, ex_model=ex_model)
 
     if method != 0 and not (sc_framedir is None):
         if method in (1, 2):
@@ -1673,8 +1710,12 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
             clip_ref = vs_ext_reference_clip(clip, sc_framedir=sc_framedir, clip_resize=(ex_model == 2))
 
     # clip and clip_ref are resized to match the frame size used for inference
-    clip = smc.get_resized_clip(clip)
-    clip_ref = smr.get_resized_clip(clip_ref)
+    if ex_model == 0:
+        clip = clip.resize.Spline36(width=d_size[0], height=d_size[1])
+        clip_ref = clip_ref.resize.Spline36(width=d_size[0], height=d_size[1])
+    else:
+        clip = smc.get_resized_clip(clip)
+        clip_ref = smr.get_resized_clip(clip_ref)
 
     if colormap_enabled:
         clip_ref = vs_sc_colormap(clip_ref, colormap=colormap)
@@ -1689,18 +1730,18 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                                              chroma_adjust=chroma_adjust.lower())
     ref_same_as_video = method == 3  # unico caso in cui è True il flag
 
-    if ex_model in (0, 3) and max_memory_frames > 0:
+    if ex_model == 3 and max_memory_frames > 1:
         render_vivid = False
 
     if only_ref_frames:
         clip_colored = clip_ref
     else:
         match ex_model:
-            case 0:  # ColorMNet
-                clip_colored = vs_colormnet(clip, clip_ref, clip_sc, image_size=-1, enable_resize=enable_resize,
+            case 0:  # CMNET2
+                clip_colored = vs_colormnet2(clip, clip_ref, clip_sc, image_size=-1, enable_resize=enable_resize,
                                             encode_mode=encode_mode, max_memory_frames=max_memory_frames,
                                             frame_propagate=ref_same_as_video, render_vivid=render_vivid,
-                                            ref_weight=ref_weight)
+                                            ref_weight=ref_weight, retry_perm_share_threshold=retry_threshold)
             case 1:  # Deep-Exemplar
                 clip_colored = vs_deepex(clip, clip_ref, clip_sc, image_size=d_size, enable_resize=enable_resize,
                                          propagate=ref_same_as_video, wls_filter_on=True, render_vivid=render_vivid,
@@ -1708,22 +1749,19 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
             case 2:  # DeepRemaster
                 clip_colored = vs_deepremaster(clip, clip_ref, clip_sc, render_vivid=render_vivid,
                                                ref_weight=ref_weight, memory_size=max_memory_frames)
-            case 3:  # Deep-CMnet
-                clip_cmnet = vs_colormnet(clip, clip_ref, clip_sc, image_size=-1, enable_resize=enable_resize,
+            case 3:  # ColorMNet
+                clip_colored = vs_colormnet(clip, clip_ref, clip_sc, image_size=-1, enable_resize=enable_resize,
                                             encode_mode=encode_mode, max_memory_frames=max_memory_frames,
                                             frame_propagate=ref_same_as_video, render_vivid=render_vivid,
                                             ref_weight=ref_weight)
-                clip_deepex = vs_deepex(clip, clip_ref, clip_sc, image_size=d_size, enable_resize=enable_resize,
-                                         propagate=ref_same_as_video, wls_filter_on=True, render_vivid=True,
-                                         ref_weight=ref_weight)
-                merge_weight = max(refmerge_weight[ref_merge], 0.3)
-                clip_colored = vs_simple_merge(clip_cmnet, clip_deepex, weight=merge_weight)
-                clip_colored = CopySCDetect(clip_colored, clip_ref)
             case _:
                 clip_colored = None
                 HAVC_LogMessage(MessageType.EXCEPTION, "HybridAVC: unknown exemplar model id: " + str(ex_model))
 
-    clip_resized = smc.restore_clip_size(clip_colored)
+    if ex_model == 0:
+        clip_resized = clip_colored.resize.Spline36(width=clip_orig.width, height=clip_orig.height)
+    else:
+        clip_resized = smc.restore_clip_size(clip_colored)
 
     # restore original resolution details, 5% faster than ShufflePlanes()
     if not (sc_framedir is None) and method == 0 and only_ref_frames:
@@ -1734,22 +1772,32 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
 
     return restore_format(clip_new, orig_fmt)
 
-def HAVC_cmnet2(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, render_speed: str = 'medium',
-                render_vivid: bool = True, ref_merge: int = 0, ref_norm: bool = False, dark: bool = False,
+def HAVC_cmnet2(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method: int = 0, render_speed: str = 'auto',
+                render_vivid: bool = False, ref_merge: int = 0, sc_framedir: str = None, ref_norm: bool = False, dark: bool = False,
                 dark_p: list = (0.2, 0.8), smooth: bool = False, smooth_p: list = (0.3, 0.7, 0.9, 0.0, "none"),
                 colormap: str = "none", ref_weight: float = None, ref_thresh: float = None, ref_freq: int = None,
-                encode_mode: int = 0, max_memory_frames: int = 0, torch_dir: str = model_dir) -> vs.VideoNode:
-    """Colorment stabilization filter
+                encode_mode: int = 0, max_memory_frames: int = 0, ref_mode: int = 1, retry_threshold: float = 0.0,
+                torch_dir: str = model_dir) -> vs.VideoNode:
+    """CMNET2 colorization filter
 
     :param clip:                Clip to process, any clip format is supported
     :param clip_ref:            Clip containing the reference frames (necessary if method=0,1,2,5,6)
+    :param method:              Method to use to generate reference frames (RF).
+                                        0 = HAVC same as video (default)
+                                        1 = HAVC + RF same as video
+                                        2 = HAVC + RF different from video
+                                        3 = external RF same as video
+                                        4 = external RF different from video
+                                        5 = external ClipRef same as video
+                                        6 = external ClipRef different from video
     :param render_speed:        Preset to control the render method and speed:
                                 Allowed values are:
-                                        'Fast'   (colors are more washed out)
-                                        'Medium' (colors are a little washed out)
-                                        'Slow'   (colors are a little more vivid)
-    :param render_vivid:        Depending on selected ex_model, if enabled (True), the frames memory is
-                                reset at every reference frame update, range [True, False]
+                                        'Auto'   : will be automatically assigned the optimal render size (default)
+                                        'Fast'   : colors are more washed out
+                                        'Medium' : colors are a little washed out
+                                        'Slow'   : colors are a little more vivid
+                                        'Slower' : colors are more accurate (usually is very slow)
+    :param render_vivid:        If True, the saturation will be increased by about 15%. Default: False
     :param ref_merge:           Method used by DeepEx to merge the reference frames with the frames propagated by DeepEx.
                                 It is applicable only with DeepEx method: 0, 1, 5.
                                 The HAVC reference frames must be produced with frequency = 1.
@@ -1770,6 +1818,19 @@ def HAVC_cmnet2(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, render
     :param ref_norm:            If true the B&W frames are normalized before apply the Scene Detection to generate the
                                 reference frames. The normalization will increase the sensitivity to smooth scene changes,
                                 range [True, False], default: False
+    :param sc_framedir:         If set, define the directory where are stored the reference frames. If only_ref_frames=True,
+                                and method=0 this directory will be written with the reference frames used by the filter.
+                                if method!=0 the directory will be read to create the reference frames that will be used
+                                by "Exemplar-based" Video Colorization. The reference frame name must be in the
+                                format: ref_nnnnnn.[jpg|png], for example the reference frame 897 must be
+                                named: ref_000897.png. With methods 5,6 this parameters can be the path to a video clip.
+                                NOTE: When used with method in (1, 2, 3, 4), reference frames are read directly
+                                      from this directory instead of being re-evaluated through the VapourSynth
+                                      pipeline for each preload/slide operation. This is significantly faster
+                                      but means that reference-frame filters (colormap, dark, smooth) are NOT
+                                      applied to the permanent-memory refs — they are applied only to the VS
+                                      clip_ref used for the runtime merge. If you need those filters applied
+                                      uniformly, apply equivalent post-processing to the final colored clip.
     :param dark:                Enable/disable darkness filter (only on ref-frames), range [True,False]
     :param dark_p:              Parameters for darken the clip's dark portions, which sometimes are wrongly colored by the color models
                                       [0] : dark_threshold, luma threshold to select the dark area, range [0.1-0.5] (0.01=1%)
@@ -1787,34 +1848,27 @@ def HAVC_cmnet2(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, render
     :param encode_mode:         Parameter used by ColorMNet to define the encode mode strategy.
                                 Available values are:
                                      0: remote encoding. The frames will be colored by a thread outside Vapoursynth.
-                                                         This option don't have any GPU memory limitation and will allow
-                                                         to fully use the long term frame memory.
-                                                         It is the faster encode method (default)
+                                                         This option has no GPU memory limitation and fully exploits
+                                                         the long-term frame memory. It is the faster encode method
+                                                         (default). All available reference frames are used via the
+                                                         sliding permanent-memory window.
                                      1: local encoding.  The frames will be colored inside the Vapoursynth environment.
-                                                         In this case the max_memory will be limited by the size of GPU
-                                                         memory (max 15 frames for 24GB GPU).
-                                                         Useful for coloring clips with a lot of smooth transitions,
-                                                         since in this case is better to use a short frame memory or
-                                                         the Deep-Exemplar model, which is faster.
-                                     2: remote all-ref   Same as "remote encoding" but all the available reference frames
-                                                         will be used for the inference at the beginning of encoding.
-    :param max_memory_frames:   Parameter used by ColorMNet/DeepRemaster models.
-                                For ColorMNet specify the max number of encoded frames to keep in memory.
-                                Its value depend on encode mode and must be defined manually following the suggested values.
-                                encode_mode=0: there is no memory limit (it could be all the frames in the clip).
-                                Suggested values are:
-                                    min=150, max=10000
-                                If = 0 will be filled with the value of 10000 or the clip length if lower.
-                                encode_mode=1: the max memory frames is limited by available GPU memory.
-                                Suggested values are:
-                                    min=1, max=4    : for 8GB GPU
-                                    min=1, max=8    : for 12GB GPU
-                                    min=1, max=15   : for 24GB GPU
-                                If = 0 will be filled with the max value (depending on total GPU RAM available).
-                                For DeepRemaster represent the number to reference frames to keep in memory.
-                                Suggested values are:
-                                    min=2, max=50
-                                If = 0 will be filled with the value of 20.
+                                                         Useful when remote encoding is not available or when a single
+                                                         process is preferred.
+    :param max_memory_frames:   Window size for the sliding permanent-memory of ColorMNet2.
+                                Defines how many reference frames are held in the model's permanent memory at any
+                                given time. Must be an even number and must not exceed the number of available
+                                reference frames. The window slides forward automatically as colorization advances.
+                                Suggested values: min=10, max=500.
+                                If = 0 (default) will be set to DEF_XRF_WINDOW_SIZE (20).
+    :param ref_mode:            Mode selected to access to the external reference frames.
+                                Allowed values are:
+                                    0: will use direct access to reference frame folder
+                                    1: will use Vapoursynth clips to access to reference frames (default)
+    :param retry_threshold:     Threshold used to identify frames that may benefit from an additional reference frame
+                                (retry the colorization using: 60%*DeOldify + 40%*DDColor).
+                                Range [0.0, 1.0], default 0.0 (disabled). High values (> 0.3) trigger more retry, while
+                                lower values (< 0.3) trigger less retry. Suggested value in the range: 0.20-0.35
     :param torch_dir:           torch hub dir location, default is model directory, if set to None will switch
                                 to torch cache dir
     """
@@ -1822,17 +1876,15 @@ def HAVC_cmnet2(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, render
     disable_warnings()
 
     # static variables
-    method: int = 0
-    sc_framedir: str | None = None
     only_ref_frames: bool = False
-    ex_model: int = 0
 
     if not torch.cuda.is_available():
         HAVC_LogMessage(MessageType.EXCEPTION, "HAVC_cmnet2: CUDA is not available")
 
     clip, orig_fmt = convert_format_RGB24(clip)
 
-    clip_ref, orig_fmt_r = convert_format_RGB24(clip_ref)
+    if clip_ref is not None:
+        clip_ref, orig_fmt_r = convert_format_RGB24(clip_ref)
 
     if method not in range(7):
         HAVC_LogMessage(MessageType.EXCEPTION, "HAVC_cmnet2: method must be in range [0-6]")
@@ -1916,13 +1968,46 @@ def HAVC_cmnet2(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, render
 
     clip_orig = clip
 
-    d_size = get_deepex_size(render_speed=render_speed.lower(), enable_resize=enable_resize, ex_model=ex_model)
-    smc = SmartResizeColorizer(clip_size=d_size, ex_model=ex_model)
-    smr = SmartResizeReference(clip_size=d_size, ex_model=ex_model)
+    # when reference frames exist on disk, read them directly (bypasses VS pipeline
+    # re-evaluation per reference — significant speedup on preload/slide).
+    # The clip_ref VS path is still used for the merge at runtime (1 get_frame per
+    # output frame, not per reference).
+    use_dir_refs = (ref_mode == 0
+                    and method in (1, 2, 3, 4)
+                    and sc_framedir is not None
+                    and os.path.isdir(sc_framedir))
 
-    # clip and clip_ref are resized to match the frame size used for inference
-    clip = smc.get_resized_clip(clip)
-    clip_ref = smr.get_resized_clip(clip_ref)
+    # if user explicitly requested ref_mode=0 but the conditions aren't met,
+    # warn and fall back to VS mode silently — alternative: raise exception
+    if ref_mode == 0 and not use_dir_refs:
+        HAVC_LogMessage(MessageType.WARNING,
+                        "HAVC_cmnet2: ref_mode=0 (direct) requested but not applicable "
+                        "(requires method in (1,2,3,4) and valid sc_framedir). "
+                        "Falling back to VS clip mode.")
+
+    if method != 0 and not (sc_framedir is None):
+        if method in (1, 2):
+            clip_ref = vs_ext_reference_clip(clip_ref, sc_framedir=sc_framedir)
+        else:
+            clip_ref = vs_ext_reference_clip(clip, sc_framedir=sc_framedir)
+
+    d_size = get_render_size(clip.width, clip.height, render_speed=render_speed.lower())
+    clip = clip.resize.Spline36(width=d_size[0], height=d_size[1])
+    clip_ref = clip_ref.resize.Spline36(width=d_size[0], height=d_size[1])
+
+    # when reference frames are loaded directly from disk, filters on clip_ref
+    # (colormap, dark, smooth) are redundant: perm_mem refs bypass them entirely,
+    # and applying them only to the runtime merge clip creates an inconsistency
+    # that degrades merge quality. Skip them.
+    if use_dir_refs:
+        if colormap_enabled or dark_enabled or chroma_smoothing_enabled:
+            HAVC_LogMessage(MessageType.WARNING,
+                            "HAVC_cmnet2: ref-frame filters (colormap/dark/smooth) "
+                            "are ignored in ref_mode=0. Apply equivalent post-"
+                            "processing to the colored clip if needed.")
+        colormap_enabled = False
+        dark_enabled = False
+        chroma_smoothing_enabled = False
 
     if colormap_enabled:
         clip_ref = vs_sc_colormap(clip_ref, colormap=colormap)
@@ -1937,47 +2022,262 @@ def HAVC_cmnet2(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, render
                                              chroma_adjust=chroma_adjust.lower())
     ref_same_as_video = False
 
-    if ex_model in (0, 3) and max_memory_frames > 0:
-        render_vivid = False
-
     clip_colored = vs_colormnet2(clip, clip_ref, clip_sc, image_size=-1, enable_resize=enable_resize,
+                                            encode_mode=encode_mode, max_memory_frames=max_memory_frames,
+                                            frame_propagate=ref_same_as_video, render_vivid=render_vivid,
+                                            ref_weight=ref_weight, sc_framedir=sc_framedir if use_dir_refs else None,
+                                            retry_perm_share_threshold=retry_threshold)
+
+    clip_resized = clip_colored.resize.Spline36(width=clip_orig.width, height=clip_orig.height)
+
+    # restore original resolution details, 5% faster than ShufflePlanes()
+    clip_new = vs_recover_clip_luma(clip_orig, clip_resized)
+
+    return restore_format(clip_new, orig_fmt)
+
+
+def HAVC_cmnet1(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method: int = 0, render_speed: str = 'auto',
+                render_vivid: bool = True, ref_merge: int = 0, sc_framedir: str = None, ref_norm: bool = False, dark: bool = False,
+                dark_p: list = (0.2, 0.8), smooth: bool = False, smooth_p: list = (0.3, 0.7, 0.9, 0.0, "none"),
+                colormap: str = "none", ref_weight: float = None, ref_thresh: float = None, ref_freq: int = None,
+                encode_mode: int = 0, max_memory_frames: int = 0, torch_dir: str = model_dir) -> vs.VideoNode:
+    """ColorMNet colorization filter
+
+    :param clip:                Clip to process, any clip format is supported
+    :param clip_ref:            Clip containing the reference frames (necessary if method=0,1,2,5,6)
+    :param method:              Method to use to generate reference frames (RF).
+                                        0 = HAVC same as video (default)
+                                        1 = HAVC + RF same as video
+                                        2 = HAVC + RF different from video
+                                        3 = external RF same as video
+                                        4 = external RF different from video
+                                        5 = external ClipRef same as video
+                                        6 = external ClipRef different from video
+    :param render_speed:        Preset to control the render method and speed:
+                                Allowed values are:
+                                        'Auto'   : will be automatically assigned the optimal render size (default)
+                                        'Fast'   : colors are more washed out
+                                        'Medium' : colors are a little washed out
+                                        'Slow'   : colors are a little more vivid
+                                        'Slower' : colors are more accurate (usually is very slow)
+    :param render_vivid:        If True, the frames memory is reset at every reference frame update. Default: True
+    :param ref_merge:           Method used by DeepEx to merge the reference frames with the frames propagated by DeepEx.
+                                It is applicable only with DeepEx method: 0, 1, 5.
+                                The HAVC reference frames must be produced with frequency = 1.
+                                Allowed values are:
+                                        0 = No RF merge (reference frames can be produced with any frequency)
+                                        1 = RF-Merge VeryLow (reference frames are merged with weight=0.3)
+                                        2 = RF-Merge Low (reference frames are merged with weight=0.4)
+                                        3 = RF-Merge Med (reference frames are merged with weight=0.5)
+                                        4 = RF-Merge High (reference frames are merged with weight=0.6)
+                                        5 = RF-Merge VeryHigh (reference frames are merged with weight=0.7)
+    :param ref_weight:          If (ref_merge > 0), represent the weight used to merge the reference frames.
+                                If is not set, is assigned automatically a value depending on ref_merge/method values.
+    :param ref_thresh:          Represent the threshold used to create the reference frames. If is not set, is assigned
+                                automatically a value of 0.10
+    :param ref_freq:            If > 0 will be generated at least a reference frame every "ref_freq" frames.
+                                range [0-1500]. If is not set, is assigned automatically a value depending on
+                                ref_merge/method values.
+    :param ref_norm:            If true the B&W frames are normalized before apply the Scene Detection to generate the
+                                reference frames. The normalization will increase the sensitivity to smooth scene changes,
+                                range [True, False], default: False
+    :param sc_framedir:         If set, define the directory where are stored the reference frames. If only_ref_frames=True,
+                                and method=0 this directory will be written with the reference frames used by the filter.
+                                if method!=0 the directory will be read to create the reference frames that will be used
+                                by "Exemplar-based" Video Colorization. The reference frame name must be in the
+                                format: ref_nnnnnn.[jpg|png], for example the reference frame 897 must be
+                                named: ref_000897.png. With methods 5,6 this parameters can be the path to a video clip.
+                                NOTE: When used with method in (1, 2, 3, 4), reference frames are read directly
+                                      from this directory instead of being re-evaluated through the VapourSynth
+                                      pipeline for each preload/slide operation. This is significantly faster
+                                      but means that reference-frame filters (colormap, dark, smooth) are NOT
+                                      applied to the permanent-memory refs — they are applied only to the VS
+                                      clip_ref used for the runtime merge. If you need those filters applied
+                                      uniformly, apply equivalent post-processing to the final colored clip.
+    :param dark:                Enable/disable darkness filter (only on ref-frames), range [True,False]
+    :param dark_p:              Parameters for darken the clip's dark portions, which sometimes are wrongly colored by the color models
+                                      [0] : dark_threshold, luma threshold to select the dark area, range [0.1-0.5] (0.01=1%)
+                                      [1] : dark_amount: amount of desaturation to apply to the dark area, range [0-1]
+                                      [2] : "chroma range" parameter (optional), if="none" is disabled (see the README)
+    :param smooth:              Enable/disable chroma smoothing (only on ref-frames), range [True, False]
+    :param smooth_p:            parameters to adjust the saturation and "vibrancy" of the clip.
+                                      [0] : dark_threshold, luma threshold to select the dark area, range [0-1] (0.01=1%)
+                                      [1] : white_threshold, if > dark_threshold will be applied a gradient till white_threshold, range [0-1] (0.01=1%)
+                                      [2] : dark_sat, amount of de-saturation to apply to the dark area, range [0-1]
+                                      [3] : dark_bright, darkness parameter it used to reduce the "V" component in "HSV" colorspace, range [0, 1]
+                                      [4] : "chroma range" parameter (optional), if="none" is disabled (see the README)
+    :param colormap:            Direct hue/color mapping (only on ref-frames), without luma filtering, using the "chroma adjustment"
+                                parameter, if="none" is disabled.
+    :param encode_mode:         Parameter used by ColorMNet to define the encode mode strategy.
+                                Available values are:
+                                     0: remote encoding. The frames will be colored by a thread outside Vapoursynth.
+                                                         This option has no GPU memory limitation and fully exploits
+                                                         the long-term frame memory. It is the faster encode method
+                                                         (default). All available reference frames are used via the
+                                                         sliding permanent-memory window.
+                                     1: local encoding.  The frames will be colored inside the Vapoursynth environment.
+                                                         Useful when remote encoding is not available or when a single
+                                                         process is preferred.
+    :param max_memory_frames:   Defines how many reference frames are held in the model's memory at any
+                                given time. Must not exceed the number of available reference frames.
+                                Suggested values: min=0, max=5000.
+                                If = 0 (default) will be set to 5000.
+    :param torch_dir:           torch hub dir location, default is model directory, if set to None will switch
+                                to torch cache dir
+    """
+    # disable packages warnings
+    disable_warnings()
+
+    # static variables
+    only_ref_frames: bool = False
+
+    if not torch.cuda.is_available():
+        HAVC_LogMessage(MessageType.EXCEPTION, "HAVC_cmnet1: CUDA is not available")
+
+    clip, orig_fmt = convert_format_RGB24(clip)
+
+    if clip_ref is not None:
+        clip_ref, orig_fmt_r = convert_format_RGB24(clip_ref)
+
+    if method not in range(7):
+        HAVC_LogMessage(MessageType.EXCEPTION, "HAVC_cmnet1: method must be in range [0-6]")
+
+    if ref_merge not in range(6):
+        HAVC_LogMessage(MessageType.EXCEPTION, "HAVC_cmnet1: ref_merge must be in range [0-5]")
+
+    sc_threshold = None
+    sc_frequency = None
+    if method in (0, 1, 2):
+        sc_threshold, sc_frequency = get_sc_props(clip_ref)
+        if sc_threshold == 0 and sc_frequency == 0:
+            HAVC_LogMessage(MessageType.EXCEPTION,
+                            "HAVC_cmnet1: method in (0, 1, 2) but sc_threshold and sc_frequency are not set")
+        if sc_frequency == 1 and only_ref_frames:
+            HAVC_LogMessage(MessageType.EXCEPTION,
+                            "HAVC_cmnet1: only_ref_frames is enabled but sc_frequency == 1")
+        if not only_ref_frames and ref_merge > 0 and sc_frequency != 1:
+            HAVC_LogMessage(MessageType.EXCEPTION,
+                            "HAVC_cmnet1: method in (0, 1, 2) and ref_merge > 0 but sc_frequency != 1")
+
+    if torch_dir is not None:
+        torch.hub.set_dir(torch_dir)
+
+    # static params
+    enable_resize = False
+
+    # unpack dark
+    dark_enabled = dark
+    dark_threshold = dark_p[0]
+    dark_amount = dark_p[1]
+    if len(dark_p) > 2:
+        dark_hue_adjust = dark_p[2]
+    else:
+        dark_hue_adjust = 'none'
+
+    # unpack chroma_smoothing
+    chroma_smoothing_enabled = smooth
+    black_threshold = smooth_p[0]
+    white_threshold = smooth_p[1]
+    dark_sat = smooth_p[2]
+    dark_bright = -smooth_p[3]  # change the sign to reduce the bright
+    if len(smooth_p) > 4:
+        chroma_adjust = smooth_p[4]
+    else:
+        chroma_adjust = 'none'
+
+    # define colormap
+    colormap = colormap.lower()
+    colormap_enabled = (colormap != "none" and colormap != "")
+
+    enable_refmerge: bool = (ref_merge > 0 and sc_frequency == 1)
+    refmerge_weight: list[float] = [0.0, 0.2, 0.4, 0.5, 0.6, 0.8]
+    if enable_refmerge:
+        if ref_weight is None:
+            ref_weight = refmerge_weight[ref_merge]
+        if ref_thresh is None:
+            ref_thresh = constants.DEF_THRESHOLD
+        if ref_freq is None or ref_freq == 1:
+            ref_freq = 0
+        clip_sc = SceneDetect(clip, threshold=ref_thresh, frequency=ref_freq, frame_norm=ref_norm)
+        if method in (1, 2) and not (sc_framedir is None) and not only_ref_frames:
+            clip_sc = SceneDetectFromDir(clip_sc, sc_framedir=sc_framedir, merge_ref_frame=True,
+                                         ref_frame_ext=(method == 2))
+    else:
+        ref_weight = 1.0
+        clip_sc = None
+
+    if method != 0 and not (sc_framedir is None):
+        ref_frame_ext = method in (2, 4)
+        merge_ref_frame = method in (1, 2)
+        if method in (1, 2):
+            clip = SceneDetectFromDir(clip_ref, sc_framedir=sc_framedir, merge_ref_frame=merge_ref_frame,
+                                      ref_frame_ext=ref_frame_ext)
+            clip_ref = CopySCDetect(clip_ref, clip)
+        else:
+            clip = SceneDetectFromDir(clip, sc_framedir=sc_framedir, merge_ref_frame=merge_ref_frame,
+                                      ref_frame_ext=ref_frame_ext)
+    else:
+        clip = CopySCDetect(clip, clip_ref)
+
+    clip_orig = clip
+
+    if method != 0 and not (sc_framedir is None):
+        if method in (1, 2):
+            clip_ref = vs_ext_reference_clip(clip_ref, sc_framedir=sc_framedir)
+        else:
+            clip_ref = vs_ext_reference_clip(clip, sc_framedir=sc_framedir)
+
+    d_size = get_render_size(clip.width, clip.height, render_speed=render_speed.lower())
+    clip = clip.resize.Spline36(width=d_size[0], height=d_size[1])
+    clip_ref = clip_ref.resize.Spline36(width=d_size[0], height=d_size[1])
+
+    if colormap_enabled:
+        clip_ref = vs_sc_colormap(clip_ref, colormap=colormap)
+
+    if dark_enabled:
+        clip_ref = vs_sc_dark_tweak(clip_ref, dark_threshold=dark_threshold, dark_amount=dark_amount,
+                                    dark_hue_adjust=dark_hue_adjust.lower())
+
+    if chroma_smoothing_enabled:
+        clip_ref = vs_sc_chroma_bright_tweak(clip_ref, black_threshold=black_threshold, white_threshold=white_threshold,
+                                             dark_sat=dark_sat, dark_bright=dark_bright,
+                                             chroma_adjust=chroma_adjust.lower())
+    ref_same_as_video = False
+
+    clip_colored = vs_colormnet(clip, clip_ref, clip_sc, image_size=-1, enable_resize=enable_resize,
                                             encode_mode=encode_mode, max_memory_frames=max_memory_frames,
                                             frame_propagate=ref_same_as_video, render_vivid=render_vivid,
                                             ref_weight=ref_weight)
 
-    clip_resized = smc.restore_clip_size(clip_colored)
+    clip_resized = clip_colored.resize.Spline36(width=clip_orig.width, height=clip_orig.height)
 
     # restore original resolution details, 5% faster than ShufflePlanes()
-    if not (sc_framedir is None) and method == 0 and only_ref_frames:
-        # ref frames are saved if sc_framedir is set
-        clip_new = vs_sc_recover_clip_luma(clip_orig, clip_resized, scenechange=True, sc_framedir=sc_framedir)
-    else:
-        clip_new = vs_recover_clip_luma(clip_orig, clip_resized)
+    clip_new = vs_recover_clip_luma(clip_orig, clip_resized)
 
     return restore_format(clip_new, orig_fmt)
 
 def HAVC_restore_video(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method: int = 6,
-                       render_speed: str = 'medium', ex_model: int = 0, ref_merge: int = 0, ref_weight: float = None,
+                       render_speed: str = 'auto', ex_model: int = 0, ref_merge: int = 0, ref_weight: float = None,
                        ref_thresh: float = None, ref_freq: int = None, ref_norm: bool = False,
-                       max_memory_frames: int = 0, render_vivid: bool = True, encode_mode: int = 0,
-                       encode_first: bool = True,  torch_dir: str = model_dir) -> vs.VideoNode:
+                       max_memory_frames: int = 0, render_vivid: bool = False, encode_mode: int = 0,
+                       retry_threshold: float = 0, torch_dir: str = model_dir) -> vs.VideoNode:
     """Colorization Function using DeepRemaster/ColorMNet to restore external video provided externally in clip_ref
 
     :param clip:                Clip to process, any format is supported
-    :param clip_ref:            Clip containing the reference frames (necessary if method=0,1,2,5,6)
+    :param clip_ref:            Clip containing the reference frames (necessary if method=5 or 6)
     :param render_speed:        Preset to control the render method and speed:
                                 Allowed values are:
-                                        'Fast'   (colors are more washed out)
-                                        'Medium' (colors are a little washed out)
-                                        'Slow'   (colors are a little more vivid)
+                                        'Auto'   : will be automatically assigned the optimal render size (default)
+                                        'Fast'   : colors are more washed out
+                                        'Medium' : colors are a little washed out
+                                        'Slow'   : colors are a little more vivid
+                                        'Slower' : colors are more accurate (usually is very slow)
     :param ex_model:            "Exemplar-based" model to use for the color propagation, available models are:
-                                    0 : ColorMNet (default)
-                                    1 : Deep-Exemplar
-                                    2 : Deep-Remaster
+                                        0 : CMNET2 (default)
+                                        1 : Deep-Exemplar
+                                        2 : Deep-Remaster
+                                        3 : ColorMNet
     :param method:              Method to use to generate reference frames (RF) for the merge.
-                                        0 = HAVC same as video
-                                        1 = HAVC + RF same as video
-                                        2 = HAVC + RF different from video
                                         5 = HAVC restore same as video
                                         6 = HAVC restore different from video (default)
     :param ref_merge:          Method used by DeepEx to merge the reference frames with the frames propagated by DeepEx.
@@ -1996,7 +2296,7 @@ def HAVC_restore_video(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None,
                                 automatically a value of 0.10
     :param ref_freq:            If > 0 will be generated at least a reference frame every "ref_freq" frames.
                                 range [0-1500]. If is not set, is assigned automatically a value depending on ref_merge
-                                value and method.
+                                value and method: if ex_model in (0, 2) 10 else 0.
     :param ref_norm:            If true the B&W frames are normalized before apply the Scene Detection to generate the
                                 reference frames. The normalization will increase the sensitivity to smooth scene changes,
                                 range [True, False], default: False
@@ -2006,7 +2306,7 @@ def HAVC_restore_video(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None,
                                 encode_mode=0: there is no memory limit (it could be all the frames in the clip).
                                 Suggested values are:
                                     min=150, max=10000
-                                If = 0 will be filled with the value of 10000 or the clip length if lower.
+                                If = 0 will be filled with the value of 1000 or the clip length if lower.
                                 encode_mode=1: the max memory frames is limited by available GPU memory.
                                 Suggested values are:
                                     min=1, max=4    : for 8GB GPU
@@ -2015,13 +2315,14 @@ def HAVC_restore_video(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None,
                                 If = 0 will be filled with the max value (depending on total GPU RAM available).
                                 For DeepRemaster represent the number to reference frames to keep in memory.
                                 Suggested values are:
-                                    min=2, max=50
+                                    min=1, max=100
     :param render_vivid:        Depending on selected ex_model, if enabled (True):
-                                    0) ColorMNet: the frames memory is reset at every reference frame update
+                                    0) CMNET2: the saturation will be increased by about 15%.
                                     1) Deep-Exemplar: the saturation will be increased by about 25%.
-                                    2) Deep-Remaster: the saturation will be increased by about 15%.
-                                range [True, False]
-     :param encode_mode:        Parameter used by ColorMNet to define the encode mode strategy.
+                                    2) Deep-Remaster: the saturation will be increased by about 20% and Hue by +10.
+                                    3) ColorMNet: the frames memory is reset at every reference frame update
+                                range [True, False]. Default = False
+    :param encode_mode:         Parameter used by CMNET2/ColorMNet to define the encode mode strategy.
                                 Available values are:
                                      0: remote encoding. The frames will be colored by a thread outside Vapoursynth.
                                                          This option don't have any GPU memory limitation and will allow
@@ -2033,11 +2334,10 @@ def HAVC_restore_video(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None,
                                                          Useful for coloring clips with a lot of smooth transitions,
                                                          since in this case is better to use a short frame memory or
                                                          the Deep-Exemplar model, which is faster.
-                                     2: remote all-ref   Same as "remote encoding" but all the available reference frames
-                                                         will be used for the inference at the beginning of encoding.
-    :param encode_first:        If False and encode_mode=0, the ColorMNet connection will be performed using the second
-                                server instance instead of the first, this will allow to run, in parallel, 2 instances
-                                of HAVC_restore_video(). default = True
+    :param retry_threshold:     (CMNET2 only) Threshold used to identify frames that may benefit from an additional
+                                reference frame (retry the colorization using: 60%*DeOldify + 40%*DDColor).
+                                Range [0.0, 1.0], default 0.0 (disabled). High values (> 0.3) trigger more retry, while
+                                lower values (< 0.3) trigger less retry. Suggested value in the range: 0.20-0.35
     :param torch_dir:           torch hub dir location, default is model directory, if set to None will switch
                                 to torch cache dir
     """
@@ -2066,7 +2366,7 @@ def HAVC_restore_video(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None,
     if ref_thresh is None or ref_thresh == 0:
         ref_thresh = constants.DEF_THRESHOLD
     if ref_freq is None or ref_freq == 0:
-        if ex_model == 2:
+        if ex_model in (0, 2):
             ref_freq = constants.DEF_MIN_FREQ
         else:
             ref_freq = 0
@@ -2085,29 +2385,26 @@ def HAVC_restore_video(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None,
     clip = CopySCDetect(clip, clip_ref)
 
     clip_orig = clip
-
-    d_size = get_deepex_size(render_speed=render_speed.lower(), enable_resize=enable_resize, ex_model=ex_model)
-    smc = SmartResizeColorizer(clip_size=d_size, ex_model=ex_model)
-    smr = SmartResizeReference(clip_size=d_size, ex_model=ex_model)
-
-    # clip and clip_ref are resized to match the frame size used for inference
-    clip = smc.get_resized_clip(clip)
-    clip_ref = smr.get_resized_clip(clip_ref)
+    if ex_model == 0:
+        d_size = get_render_size(clip.width, clip.height, render_speed=render_speed.lower())
+        clip = clip.resize.Spline36(width=d_size[0], height=d_size[1])
+        clip_ref = clip_ref.resize.Spline36(width=d_size[0], height=d_size[1])
+    else:
+        d_size = get_deepex_size(render_speed=render_speed.lower(), enable_resize=enable_resize, ex_model=ex_model)
+        smc = SmartResizeColorizer(clip_size=d_size, ex_model=ex_model)
+        smr = SmartResizeReference(clip_size=d_size, ex_model=ex_model)
+        # clip and clip_ref are resized to match the frame size used for inference
+        clip = smc.get_resized_clip(clip)
+        clip_ref = smr.get_resized_clip(clip_ref)
 
     ref_same_as_video = False
 
     match ex_model:
-        case 0:  # ColorMNet
-            if encode_first:
-                clip_colored = vs_colormnet(clip, clip_ref, clip_sc, image_size=-1, enable_resize=enable_resize,
-                                        encode_mode=encode_mode, max_memory_frames=max_memory_frames,
-                                        frame_propagate=ref_same_as_video, render_vivid=render_vivid,
-                                        ref_weight=ref_weight)
-            else:
-                clip_colored = vs_colormnet2(clip, clip_ref, clip_sc, image_size=-1, enable_resize=enable_resize,
-                                             encode_mode=encode_mode, max_memory_frames=max_memory_frames,
-                                             frame_propagate=ref_same_as_video, render_vivid=render_vivid,
-                                             ref_weight=ref_weight)
+        case 0:  # CMNET2
+            clip_colored = vs_colormnet2(clip, clip_ref, clip_sc, image_size=-1, enable_resize=enable_resize,
+                                         encode_mode=encode_mode, max_memory_frames=max_memory_frames,
+                                         frame_propagate=ref_same_as_video, render_vivid=render_vivid,
+                                         ref_weight=ref_weight,  retry_perm_share_threshold=retry_threshold)
         case 1:  # Deep-Exemplar
             clip_colored = vs_deepex(clip, clip_ref, clip_sc, image_size=d_size, enable_resize=enable_resize,
                                      propagate=ref_same_as_video, wls_filter_on=True, render_vivid=render_vivid,
@@ -2115,11 +2412,19 @@ def HAVC_restore_video(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None,
         case 2:  # DeepRemaster
             clip_colored = vs_deepremaster(clip, clip_ref, clip_sc, render_vivid=render_vivid, ref_weight=ref_weight,
                                            memory_size=max_memory_frames, ref_frequency=ref_freq)
+        case 3:  # ColorMNet
+            clip_colored = vs_colormnet(clip, clip_ref, clip_sc, image_size=-1, enable_resize=enable_resize,
+                                            encode_mode=encode_mode, max_memory_frames=max_memory_frames,
+                                            frame_propagate=ref_same_as_video, render_vivid=render_vivid,
+                                            ref_weight=ref_weight)
         case _:
             clip_colored = None
             HAVC_LogMessage(MessageType.EXCEPTION, "HybridAVC: unknown exemplar model id: " + str(ex_model))
 
-    clip_resized = smc.restore_clip_size(clip_colored)
+    if ex_model == 0:
+        clip_resized = clip_colored.resize.Spline36(width=clip_orig.width, height=clip_orig.height)
+    else:
+        clip_resized = smc.restore_clip_size(clip_colored)
 
     # restore original resolution details, 5% faster than ShufflePlanes()
     clip_new = vs_recover_clip_luma(clip_orig, clip_resized)
@@ -2137,6 +2442,20 @@ coloring function with additional pre-process and post-process filters
 
 def vs_frame_interpolation(clip: vs.VideoNode, clip_ref: vs.VideoNode, frame_interp: int = 5,
                            chroma_adjust: str = "none", process_id: int = 1)  -> vs.VideoNode:
+    """Internal helper that selects the appropriate frame-interpolation backend.
+
+    Routes to Deep-Exemplar (ex_model=1) when frame_interp < 5, or to CMNET2/ColorMNet
+    when frame_interp >= 5. The choice between CMNET2 and ColorMNet for the latter case
+    is controlled by process_id (1 = CMNET2, 2 = ColorMNet via HAVC_cmnet1).
+
+    :param clip:          B&W source clip (RGB24).
+    :param clip_ref:      Coloured reference clip with scene-change frame props.
+    :param frame_interp:  Interpolation frequency in frames [1, 10]. Values < 5 use
+                          Deep-Exemplar; values >= 5 use CMNET2/ColorMNet.
+    :param chroma_adjust: Chroma adjustment string applied as colormap. 'none' = disabled.
+    :param process_id:    Backend selector when frame_interp >= 5: 1 = CMNET2, 2 = ColorMNet.
+    :return:              Colour-interpolated RGB24 clip.
+    """
     if frame_interp < 5:  # Deep-Exemplar
         clip_colored = HAVC_deepex(clip=clip, clip_ref=clip_ref, method=0, render_speed='Medium', render_vivid=True,
                                        ref_merge=0, sc_framedir=None, only_ref_frames=False, dark=False,
@@ -2144,12 +2463,12 @@ def vs_frame_interpolation(clip: vs.VideoNode, clip_ref: vs.VideoNode, frame_int
                                        ref_freq=frame_interp, ref_norm=False, smooth=False, colormap=chroma_adjust)
     else:
         if process_id == 1:
-            clip_colored = HAVC_deepex(clip=clip, clip_ref=clip_ref, method=0, render_speed='Medium', render_vivid=True,
+            clip_colored = HAVC_deepex(clip=clip, clip_ref=clip_ref, method=0, render_speed='Medium', render_vivid=False,
                                        ref_merge=0, sc_framedir=None, only_ref_frames=False, dark=False,
                                        ref_thresh=0.10, ex_model=0, encode_mode=0, max_memory_frames=0,
                                        ref_freq=frame_interp*2, ref_norm=False, smooth=False, colormap=chroma_adjust)
         else:
-            clip_colored = HAVC_cmnet2(clip=clip, clip_ref=clip_ref, render_speed='Medium', render_vivid=True,
+            clip_colored = HAVC_cmnet1(clip=clip, clip_ref=clip_ref, render_speed='Medium', render_vivid=True,
                                    ref_merge=0, dark=True, dark_p=[0.2, 0.8], ref_thresh=0.10,
                                    encode_mode=0, max_memory_frames=0, ref_freq=frame_interp*2, ref_norm=True,
                                    smooth=True, smooth_p=[0.3, 0.7, 0.9, 0.0, "none"], colormap=chroma_adjust)
@@ -2281,7 +2600,7 @@ def HAVC_colorizer_fast(
                           sc_min_freq=frame_interp, sc_min_int=1, sc_tht_ssim=0.0, sc_normalize=False,
                           debug_level=debug_level)
 
-    clip_colored = vs_frame_interpolation(clip, clip_ref, frame_interp, chroma_adjust, process_id=1)
+    clip_colored = vs_frame_interpolation(clip, clip_ref, frame_interp, chroma_adjust, process_id=2)
     clip_colored = clip_colored.std.SetFrameProp(prop="sc_threshold", floatval=0.1)
     clip_colored = clip_colored.std.SetFrameProp(prop="sc_frequency", intval=1)
 
@@ -2696,7 +3015,7 @@ def HAVC_DeepRemaster(
         ref_buffer_size: int = 20,
         device_index: int = 0,
         inference_mode: bool = False,
-        mode: int = 0
+        ref_mode: int = 0
 ) -> vs.VideoNode:
     """Function to perform colorization with DeepRemaster using direct access to RF or using Vapoursynth clips
 
@@ -2710,7 +3029,7 @@ def HAVC_DeepRemaster(
      :param ref_buffer_size: reference frame buffer size for inference. Default: 20
      :param device_index:    Device ordinal of the GPU (if = -1 CPU mode is enabled). Default: 0
      :param inference_mode:  Enable/Disable torch inference mode. Default: False
-     :param mode:            Mode selected to access to the external reference frames.
+     :param ref_mode:        Mode selected to access to the external reference frames.
                              Allowed values are:
                                  0: will use direct access to reference frame folder (fast)
                                  1: will use Vapoursynth clips to access to reference frames (slow)
@@ -2720,7 +3039,7 @@ def HAVC_DeepRemaster(
     if ref_dir is None:
         HAVC_LogMessage(MessageType.EXCEPTION, "HAVC_DeepRemaster: ref_dir is unset")
 
-    if mode == 0:
+    if ref_mode == 0:
         return remaster.vs_remaster_colorize(clip, length, render_vivid, ref_dir, ref_minedge,
                                                frame_mindim, ref_buffer_size, device_index, inference_mode)
 
@@ -3522,7 +3841,20 @@ wrapper to function vs_sc_export_frames() to export the clip's reference frames
 
 def _extract_reference_frames(clip: vs.VideoNode, sc_framedir: str = "./", ref_offset: int = 0, ref_ext: str = "png",
                               ref_override: bool = True, prop_name: str = "_SceneChangePrev") -> vs.VideoNode:
+    """Export scene-change frames from clip to a directory on disk.
 
+    Creates sc_framedir if it does not exist, converts the clip to RGB24, then delegates
+    to vs_sc_export_frames. Primarily used by HAVC_main to persist reference frames for
+    subsequent exemplar-based passes.
+
+    :param clip:         Input clip (any format).
+    :param sc_framedir:  Output directory for reference images. Created if missing.
+    :param ref_offset:   Value added to the frame number in each filename. Default 0.
+    :param ref_ext:      Image format extension ('png' or 'jpg'). Default 'png'.
+    :param ref_override: If False, existing files are not overwritten. Default True.
+    :param prop_name:    Frame property used to detect scene changes. Default '_SceneChangePrev'.
+    :return:             Clip pass-through (side-effect: reference frames saved to disk).
+    """
     pathlib.Path(sc_framedir).mkdir(parents=True, exist_ok=True)
 
     clip, orig_fmt = convert_format_RGB24(clip)
@@ -3543,7 +3875,12 @@ wrapper to function vs_recover_clip_luma().
 
 
 def _clip_chroma_resize(clip_hires: vs.VideoNode, clip_lowres: vs.VideoNode) -> vs.VideoNode:
+    """Upscale clip_lowres to the dimensions of clip_hires and replace its luma with the hi-res luma.
 
+    :param clip_hires:  High-resolution clip whose luma plane will be preserved.
+    :param clip_lowres: Low-resolution clip whose chroma planes will be upscaled and blended in.
+    :return:            Clip at clip_hires resolution with luma from clip_hires and chroma from the upscaled clip_lowres.
+    """
     clip_resized = clip_lowres.resize.Spline64(width=clip_hires.width, height=clip_hires.height)
 
     clip_hires, orig_fmt_h = convert_format_RGB24(clip_hires)
@@ -3565,6 +3902,12 @@ wrapper to function vs_get_clip_frame() to get frames fast.
 
 
 def _get_clip_frame(clip: vs.VideoNode, nframe: int = 0) -> vs.VideoNode:
+    """Extract a single frame from the clip and return it as a one-frame clip, preserving the original format.
+
+    :param clip:    Input clip, any format is supported.
+    :param nframe:  Zero-based index of the frame to extract. Default = 0.
+    :return:        Single-frame clip containing the requested frame in the original clip format.
+    """
     clip, orig_fmt = convert_format_RGB24(clip)
     clip = vs_get_clip_frame(clip=clip, nframe=nframe)
     return restore_format(clip, orig_fmt)
@@ -3581,6 +3924,12 @@ disable packages warnings.
 
 
 def disable_warnings():
+    """Suppress noisy log output from third-party libraries used by HAVC.
+
+    Sets the log level to ERROR for known verbose packages (matplotlib, PIL, torch,
+    numpy, tensorrt, kornia, dinov2) and silences FutureWarning, UserWarning, and
+    DeprecationWarning categories project-wide.
+    """
     logger_blocklist = [
         "matplotlib",
         "PIL",
@@ -3618,6 +3967,11 @@ def HAVC_ddeoldify(
         sc_normalize: bool = False, sc_min_int: int = 1, sc_tht_white: float = constants.DEF_THT_WHITE,
         sc_tht_black: float = constants.DEF_THT_BLACK, device_index: int = 0, torch_dir: str = model_dir,
         sc_debug: bool = False) -> vs.VideoNode:
+    """Deprecated alias for HAVC_colorizer. Use HAVC_colorizer instead.
+
+    Emits a VapourSynth WARNING message on every call and forwards all arguments
+    to HAVC_colorizer with the appropriate parameter mapping.
+    """
     vs.core.log_message(
         vs.MESSAGE_TYPE_WARNING,
         "Warning: HAVC_ddeoldify is deprecated and may be removed in the future, please use 'HAVC_colorizer' instead.")
@@ -3631,6 +3985,11 @@ def HAVC_ddeoldify(
 def ddeoldify_main(clip: vs.VideoNode, Preset: str = 'Fast', VideoTune: str = 'Stable', ColorFix: str = 'Violet/Red',
                    ColorTune: str = 'Light', ColorMap: str = 'None', degrain_strength: int = 0,
                    enable_fp16: bool = True) -> vs.VideoNode:
+    """Deprecated alias for HAVC_main. Use HAVC_main instead.
+
+    Emits a VapourSynth WARNING message on every call and forwards the core preset/tune
+    arguments to HAVC_main. The degrain_strength parameter is ignored.
+    """
     vs.core.log_message(
         vs.MESSAGE_TYPE_WARNING,
         "Warning: ddeoldify_main is deprecated and may be removed in the future, please use 'HAVC_main' instead.")
@@ -3645,6 +4004,12 @@ def ddeoldify(clip: vs.VideoNode, method: int = 2, mweight: float = 0.4, deoldif
               degrain_strength: int = 0, cmc_tresh: float = 0.2, lmm_p: list = (0.2, 0.8, 1.0),
               alm_p: list = (0.8, 1.0, 0.15), cmb_sw: bool = False, device_index: int = 0,
               torch_dir: str = model_dir) -> vs.VideoNode:
+    """Deprecated alias for HAVC_colorizer. Use HAVC_colorizer instead.
+
+    Emits a VapourSynth WARNING message on every call. The dotweak, dotweak_p, and
+    degrain_strength parameters are silently ignored; all other arguments are forwarded
+    to HAVC_colorizer with the appropriate parameter mapping.
+    """
     vs.core.log_message(
         vs.MESSAGE_TYPE_WARNING,
         "Warning: ddeoldify is deprecated and may be removed in the future, please use 'HAVC_colorizer' instead.")
@@ -3657,6 +4022,11 @@ def ddeoldify_stabilizer(clip: vs.VideoNode, dark: bool = False, dark_p: list = 
                          smooth_p: list = (0.3, 0.7, 0.9, 0.0, "none"),
                          stab: bool = False, stab_p: list = (5, 'A', 1, 15, 0.2, 0.80), colormap: str = "none",
                          render_factor: int = 24) -> vs.VideoNode:
+    """Deprecated alias for HAVC_stabilizer. Use HAVC_stabilizer instead.
+
+    Emits a VapourSynth WARNING message on every call and forwards all arguments
+    unchanged to HAVC_stabilizer.
+    """
     vs.core.log_message(
         vs.MESSAGE_TYPE_WARNING,
         "Warning: ddeoldify_stabilizer is deprecated and may be removed in the future, please use 'HAVC_stabilizer'.")

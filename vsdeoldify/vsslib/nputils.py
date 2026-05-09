@@ -99,6 +99,15 @@ convert an NP image to gray or B&W if threshold > 0
 
 
 def np_rgb_to_gray(img_np: np.ndarray, threshold: float = 0) -> np.ndarray:
+    """Convert an RGB numpy array to grayscale (or binary B&W if threshold > 0).
+
+    Uses standard luma weights (0.299R + 0.587G + 0.114B). If threshold > 0
+    each channel is set to 255 where luma > threshold*255, else 0.
+
+    :param img_np:    Input RGB array, shape (H, W, 3), dtype uint8.
+    :param threshold: Binary threshold in [0, 1]. 0 = grayscale, >0 = B&W.
+    :return:          Grayscale or binary RGB array with the same shape.
+    """
     R = img_np[:, :, 0]
     G = img_np[:, :, 1]
     B = img_np[:, :, 2]
@@ -124,6 +133,13 @@ def np_rgb_to_gray(img_np: np.ndarray, threshold: float = 0) -> np.ndarray:
 
 
 def np_get_luma(img_np: np.ndarray) -> np.ndarray:
+    """Extract the luma (Y) channel from an RGB numpy array.
+
+    Applies standard luma weights (0.299R + 0.587G + 0.114B).
+
+    :param img_np: Input RGB array, shape (H, W, 3), dtype uint8.
+    :return:       2-D luma array, shape (H, W), dtype float, range [0, 255].
+    """
     R = img_np[:, :, 0]
     G = img_np[:, :, 1]
     B = img_np[:, :, 2]
@@ -140,6 +156,18 @@ def np_get_luma(img_np: np.ndarray) -> np.ndarray:
 
 def w_np_rgb_to_gray(img_np: np.ndarray, dark_luma: float = 0, luma_white: float = 0.90,
                      as_weight: bool = True) -> np.ndarray:
+    """Convert an RGB array to a per-pixel weight map with a gradient in the luma range.
+
+    When dark_luma > 0 a linear gradient is computed from 0 at dark_luma to 1 at
+    luma_white. When dark_luma == 0 the result is the normalised luma (range [0, 1] if
+    as_weight=True, else [0, 255]).
+
+    :param img_np:     Input RGB array, shape (H, W, 3), dtype uint8.
+    :param dark_luma:  Lower boundary of the gradient ramp (fraction, [0, 1]).
+    :param luma_white: Upper boundary of the gradient ramp (fraction, [0, 1]).
+    :param as_weight:  If True return float values in [0, 1]; else uint8 [0, 255].
+    :return:           Weight array, shape (H, W, 3).
+    """
     R = img_np[:, :, 0]
     G = img_np[:, :, 1]
     B = img_np[:, :, 2]
@@ -195,6 +223,14 @@ merge image1 with image2 using the mask (white->img2, black->img1)
 
 def np_image_mask_merge(img1_np: np.ndarray, img2_np: np.ndarray,
                         mask_np: np.ndarray, normalize: bool = True) -> np.ndarray:
+    """Merge two RGB arrays using a binary mask (white → img2, black → img1).
+
+    :param img1_np:   Base image array, shape (H, W, 3), dtype uint8.
+    :param img2_np:   Overlay image array, same shape as img1_np.
+    :param mask_np:   Mask array, same shape. White (255 or 1) selects img2.
+    :param normalize: If True, divide mask by 255 before blending.
+    :return:          Merged array, dtype uint8.
+    """
     if normalize:
         mask_white = (mask_np / 255).astype(float)  # pass only white
         mask_black = (1 - mask_white).astype(float)  # pass only black
@@ -284,7 +320,21 @@ def np_weighted_merge(img1_np: np.ndarray, img2_np: np.ndarray, weight: float = 
 
 def np_luma_blend(img_np: np.ndarray, img_new_np: np.ndarray, f_luma: float = 0.5, luma_limit: float = 0.6,
                      alpha: float = 0.95, min_w: float = 0.10, decay: float = 2.0) -> np.ndarray:
+    """Blend two images with a weight that decreases when the frame is dark.
 
+    When f_luma < luma_limit the blend weight is
+    ``w = max(alpha * (f_luma / luma_limit)^decay, min_w)``.
+    When f_luma >= luma_limit img_new is returned unchanged.
+
+    :param img_np:     Original image array (H, W, 3), uint8.
+    :param img_new_np: New (colorized) image array, same shape.
+    :param f_luma:     Average luma of the frame, range [0, 1].
+    :param luma_limit: Luma threshold below which blending activates.
+    :param alpha:      Maximum blend weight assigned to img_new.
+    :param min_w:      Minimum blend weight for very dark frames.
+    :param decay:      Power-law exponent controlling how quickly weight drops.
+    :return:           Blended array, dtype uint8.
+    """
     # Luma merge
     if f_luma < luma_limit:
         bright_scale = pow(f_luma / luma_limit, decay)
@@ -308,6 +358,12 @@ Function to copy the chroma parametrs "U", "V", of "img_m" in "orig"
 
 
 def chroma_np_post_process(img_np: np.ndarray, orig_np: np.ndarray) -> np.ndarray:
+    """Copy the chroma (U, V) planes of img_np into orig_np, keeping orig_np's luma.
+
+    :param img_np:  Source of chroma (U, V), RGB array (H, W, 3), uint8.
+    :param orig_np: Source of luma (Y), RGB array, same shape.
+    :return:        RGB array with Y from orig_np and U/V from img_np.
+    """
     img_yuv = cv2.cvtColor(img_np, cv2.COLOR_RGB2YUV)
     # copy the chroma parametrs "U", "V", of "img_m" in "orig" 
     orig_yuv = cv2.cvtColor(orig_np, cv2.COLOR_RGB2YUV)
@@ -328,6 +384,15 @@ hue range [-360.+360], converted to [-180.+180]
 
 
 def np_hue_add(hsv_s: np.ndarray = None, hue: float = 0):
+    """Shift the hue channel of an OpenCV HSV array in-place.
+
+    The input hue range is [-360, +360] degrees; it is halved internally to
+    match OpenCV's [0, 180] Hue convention. Wraps around the boundaries.
+
+    :param hsv_s: Hue channel array (H, W), float, range [0, 180].
+    :param hue:   Hue shift in degrees, range [-360, +360].
+    :return:      Shifted hue array, same shape and dtype.
+    """
     if hue == 0:
         return hsv_s
 
@@ -341,6 +406,18 @@ def np_hue_add(hsv_s: np.ndarray = None, hue: float = 0):
 
 
 def np_image_gamma_contrast(np_img: np.ndarray = None, gamma: float = 1.0, cont: float = 1.0, perc: float = 5):
+    """Apply gamma correction and contrast stretch to an RGB numpy array.
+
+    Contrast is computed by percentile-clipping the Y channel to [perc, 100-perc]
+    and rescaling to [0, 1] before multiplying by cont. Gamma is then applied
+    as Y_out = (Y/255)^(1/gamma) * 255.
+
+    :param np_img: Input RGB array (H, W, 3), uint8.
+    :param gamma:  Gamma exponent (> 1 brightens, < 1 darkens). 1.0 = no-op.
+    :param cont:   Contrast factor applied after percentile normalisation. 1.0 = no-op.
+    :param perc:   Percentile used for contrast clipping, range [0, 50].
+    :return:       Adjusted RGB array, uint8.
+    """
     if cont == 1.0 and gamma == 1.0:
         return np_img
 
@@ -373,6 +450,7 @@ def np_image_gamma_contrast(np_img: np.ndarray = None, gamma: float = 1.0, cont:
 
 
 def isfloat(x) -> bool:
+    """Return True if x can be converted to a float, False otherwise."""
     try:
         n = float(x)
         return True

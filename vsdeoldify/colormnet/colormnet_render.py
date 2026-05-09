@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-09-14
 version:
 LastEditors: Dan64
-LastEditTime: 2026-01-17
+LastEditTime: 2026-05-01
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
@@ -96,8 +96,8 @@ class ColorMNetRender:
 
     def _colorize_config_init(self, image_size: int = -1, vid_length: int = 100, propagate: bool = False):
         """
-                        size - resize min. side to size. Does nothing if <0.
-                        Resize the shorter side to this size. -1 to use original resolution.
+            size - resize min. side to size. Does nothing if <0.
+            Resize the shorter side to this size. -1 to use original resolution.
        """
 
         cudnn.benchmark = True
@@ -105,8 +105,7 @@ class ColorMNetRender:
 
         self.config = {}
         # model checkpoint location
-        self.config['model'] = model_dir = path.join(self.project_dir,
-                                                     'weights/DINOv2FeatureV6_LocalAtten_s2_154000.pth')
+        self.config['model'] = path.join(self.project_dir, 'weights/DINOv2FeatureV6_LocalAtten_s2_154000.pth')
         # Whether the provided reference frame is exactly the first input frame
         self.config['FirstFrameIsNotExemplar'] = not propagate
         # dataset setting

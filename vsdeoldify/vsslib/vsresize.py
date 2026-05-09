@@ -27,6 +27,42 @@ Description:
 function to resize a clip by keeping the aspect ratio. 
 """
 
+def get_render_size(orig_w: int, orig_h: int, render_speed: str = "medium") -> tuple[int, int]:
+    """
+    Computes the new (W, H) while maintaining the aspect ratio,
+    so that the longest side equals max_side.
+    The resulting dimensions are always rounded to the nearest even number.
+    Returns the original dimensions if max_side <= 0 or
+    if the frame is already smaller than max_side.
+    """
+
+    if render_speed == "auto":
+        ratio = orig_w/orig_h
+        render_speed = "fast" if ratio < 1.6 else "medium"
+
+    match render_speed:
+        case 'fast':
+            max_side = 384
+        case 'medium':
+            max_side = 512
+        case 'slow':
+            max_side = 640
+        case 'slower':
+            max_side = 0
+        case _:
+            raise vs.Error("get_render_size: unknown render_speed ->" + render_speed)
+
+    if max_side <= 0:
+        return orig_w, orig_h
+
+    longest = max(orig_w, orig_h)
+    if longest <= max_side:
+        return orig_w, orig_h
+    scale = max_side / longest
+    new_w = int(round(orig_w * scale / 2)) * 2
+    new_h = int(round(orig_h * scale / 2)) * 2
+    return new_w, new_h
+
 def resize_min_HW(clip: vs.VideoNode, min_size: tuple[int, int] = (512, 480)) -> vs.VideoNode:
     """
     Resize clip so that the max width/height is min_size while maintaining aspect ratio.
@@ -163,6 +199,10 @@ class ClipPadder:
     """
 
     def __init__(self, clip_width_size: int = DEF_MAX_RESIZE):
+        """Initialise the padder.
+
+        :param clip_width_size: Target square size (pixels) for the padded clip. Default DEF_MAX_RESIZE.
+        """
         self.clip_width_size: int = clip_width_size
         self._original_width: Optional[int] = None
         self._original_height: Optional[int] = None
@@ -247,6 +287,7 @@ class ClipPadder:
     # Optional: expose metadata (read-only)
     @property
     def original_size(self) -> tuple[int, int]:
+        """Return (width, height) of the clip before padding. Raises RuntimeError if pad() not called."""
         if self._original_width is None:
             raise RuntimeError("pad() not called yet")
         return (self._original_width, self._original_height)
@@ -269,17 +310,29 @@ Class for resize clips in 16/9 aspect ratio, borders are added if needed
 
 
 class SmartResizeColorizer:
+    """Singleton that pads a colorizer input clip to the target 16:9 aspect ratio and later restores it.
+
+    Adds symmetric borders to match the aspect ratio of the exemplar model's expected input size,
+    resizes to the target dimensions, then provides restore_clip_size to reverse the operation.
+    Only effective for ex_model in (0, 1, 3); other models are passed through unchanged.
+    """
+
     _instance = None
     _initialized: bool = False
     ex_model: int = None
 
     def __new__(cls, *args, **kwargs):
+        """Singleton constructor — returns the existing instance if already created."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self, clip_size: list = [432, 768], ex_model: int = 1):
+        """Initialise target size and model type (only applied once due to singleton pattern).
 
+        :param clip_size: Target inference dimensions [H, W]. Default [432, 768].
+        :param ex_model:  Exemplar model ID; 0=CMNET2, 1=DeepEx, 3=ColorMNet. Default 1.
+        """
         self.pad_width = None
         self.pad_height = None
         self.ratio_clip = None
@@ -293,6 +346,11 @@ class SmartResizeColorizer:
             self.__class__._initialized = True
 
     def get_resized_clip(self, clip: vs.VideoNode) -> vs.VideoNode:
+        """Pad the clip to the target aspect ratio and resize to target dimensions.
+
+        :param clip: RGB24 input clip.
+        :return:     Padded and resized clip at target_width × target_height.
+        """
         self.clip_w = clip.width
         self.clip_h = clip.height
         self.ratio_clip = round(self.clip_w / self.clip_h, 2)
@@ -316,6 +374,11 @@ class SmartResizeColorizer:
         return clip.resize.Spline64(width=self.target_width, height=self.target_height)
 
     def restore_clip_size(self, clip: vs.VideoNode = None):
+        """Resize and crop the clip back to its original dimensions.
+
+        :param clip: Processed clip at target_width × target_height.
+        :return:     Clip at the original (pre-padding) dimensions.
+        """
         if self.ex_model in (0, 1, 3):
             clip = clip.resize.Spline64(width=self.clip_w + 2 * self.pad_width, height=self.clip_h + 2 * self.pad_height)
             if self.ratio_clip < self.ratio_target:
@@ -329,6 +392,12 @@ class SmartResizeColorizer:
             return clip  # no need to restore
 
     def clip_chroma_resize(self, clip_highres: vs.VideoNode, clip_lowres: vs.VideoNode) -> vs.VideoNode:
+        """Restore clip_lowres to original size and perform a chroma resize with clip_highres's luma.
+
+        :param clip_highres: Original high-resolution clip (source of Y plane).
+        :param clip_lowres:  Colourised low-resolution clip (source of U/V planes).
+        :return:             RGB24 clip with original luma and colourised chroma.
+        """
         clip_resized = self.restore_clip_size(clip_lowres)
         clip_bw = clip_highres.resize.Bicubic(format=vs.YUV420P8, matrix_s="709", range_s="full")
         clip_color = clip_resized.resize.Bicubic(format=vs.YUV420P8, matrix_s="709", range_s="full")
@@ -339,17 +408,28 @@ class SmartResizeColorizer:
 
 
 class SmartResizeReference:
+    """Singleton that pads a reference clip to the target 16:9 aspect ratio and later restores it.
+
+    Same pattern as SmartResizeColorizer but ensures padding values are multiples of 2
+    to maintain chroma subsampling alignment for the reference frames.
+    """
+
     _instance = None
     _initialized: bool = False
     ex_model: int = None
 
     def __new__(cls, *args, **kwargs):
+        """Singleton constructor — returns the existing instance if already created."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self, clip_size: list = [432, 768], ex_model: int = 1):
+        """Initialise target size and model type (only applied once due to singleton pattern).
 
+        :param clip_size: Target inference dimensions [H, W]. Default [432, 768].
+        :param ex_model:  Exemplar model ID; 0=CMNET2, 1=DeepEx, 3=ColorMNet. Default 1.
+        """
         self.pad_width = None
         self.pad_height = None
         self.ratio_clip = None
@@ -363,6 +443,13 @@ class SmartResizeReference:
             self.__class__._initialized = True
 
     def get_resized_clip(self, clip: vs.VideoNode) -> vs.VideoNode:
+        """Pad the reference clip to the target aspect ratio and resize to target dimensions.
+
+        Padding values are rounded to multiples of 2 for chroma alignment.
+
+        :param clip: RGB24 reference clip.
+        :return:     Padded and resized reference clip at target_width × target_height.
+        """
         self.clip_w = clip.width
         self.clip_h = clip.height
         self.ratio_clip = round(self.clip_w / self.clip_h, 2)
@@ -389,6 +476,11 @@ class SmartResizeReference:
             return clip  # no changes
 
     def restore_clip_size(self, clip: vs.VideoNode = None):
+        """Resize and crop the reference clip back to its original dimensions.
+
+        :param clip: Processed clip at target_width × target_height.
+        :return:     Reference clip at original (pre-padding) dimensions.
+        """
         if self.ex_model in (0, 1, 3):
             clip = clip.resize.Spline64(width=self.clip_w + 2 * self.pad_width, height=self.clip_h + 2 * self.pad_height)
             if self.ratio_clip < self.ratio_target:
@@ -402,6 +494,12 @@ class SmartResizeReference:
             return clip  # no need to restore
 
     def clip_chroma_resize(self, clip_highres: vs.VideoNode, clip_lowres: vs.VideoNode) -> vs.VideoNode:
+        """Restore clip_lowres to original size and perform a chroma resize with clip_highres's luma.
+
+        :param clip_highres: Original high-resolution reference clip (source of Y plane).
+        :param clip_lowres:  Colourised low-resolution clip (source of U/V planes).
+        :return:             RGB24 clip with original luma and colourised chroma.
+        """
         clip_resized = self.restore_clip_size(clip_lowres)
         clip_bw = clip_highres.resize.Bicubic(format=vs.YUV420P8, matrix_s="709", range_s="full")
         clip_color = clip_resized.resize.Bicubic(format=vs.YUV420P8, matrix_s="709", range_s="full")

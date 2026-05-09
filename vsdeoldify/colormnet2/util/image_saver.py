@@ -2,13 +2,13 @@ import cv2
 import numpy as np
 
 import torch
-from vsdeoldify.colormnet.dataset.range_transform import inv_im_trans, inv_lll2rgb_trans
+from vsdeoldify.colormnet2.dataset.range_transform import inv_im_trans, inv_lll2rgb_trans
 from collections import defaultdict
 
 from PIL import Image
 from skimage import color, io
 
-import vsdeoldify.colormnet.util.functional as F
+import vsdeoldify.colormnet2.util.functional as F
 class Normalize(object):
     def __init__(self):
         pass

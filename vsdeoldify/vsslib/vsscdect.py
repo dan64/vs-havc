@@ -44,6 +44,24 @@ sc_tht_filter=0.65-0.75
 def SceneDetect(clip: vs.VideoNode, threshold: float = DEF_THRESHOLD, frequency: int = 0, sc_tht_filter: float = 0,
                 min_length: int = 1, tht_white: float = DEF_THT_WHITE, tht_black: float = DEF_THT_BLACK,
                 frame_norm: bool = False, tht_offset: int = 1, sc_debug: bool = False) -> vs.VideoNode:
+    """Detect scene changes and annotate frames with _SceneChangePrev/_SceneChangeNext properties.
+
+    Stores the threshold and frequency parameters as frame properties ('sc_threshold',
+    'sc_frequency'). For frequency==1 all frames are marked as scene changes. Otherwise
+    delegates to SceneDetection (custom or misc.SCDetect) with optional SSIM post-filtering.
+
+    :param clip:           Input clip (any format).
+    :param threshold:      Luma-change threshold for scene detection [0, 1]. Default DEF_THRESHOLD.
+    :param frequency:      If > 0, emit a scene change at least every 'frequency' frames. Default 0.
+    :param sc_tht_filter:  SSIM threshold for post-detection refinement [0, 1]. 0 = disabled.
+    :param min_length:     Minimum frame distance between consecutive scene changes. Default 1.
+    :param tht_white:      Luma upper bound for scene changes (skip very bright frames). Default DEF_THT_WHITE.
+    :param tht_black:      Luma lower bound for scene changes (skip very dark frames). Default DEF_THT_BLACK.
+    :param frame_norm:     If True, normalise the GRAY8 clip before detection. Default False.
+    :param tht_offset:     Frame comparison offset (>1 useful for blended scene changes). Default 1.
+    :param sc_debug:       If True, log debug messages per frame. Default False.
+    :return:               Clip with _SceneChangePrev/_SceneChangeNext frame properties set.
+    """
     clip = clip.std.SetFrameProp(prop="sc_threshold", floatval=threshold)
     clip = clip.std.SetFrameProp(prop="sc_frequency", intval=frequency)
 
@@ -89,6 +107,15 @@ def SceneDetect(clip: vs.VideoNode, threshold: float = DEF_THRESHOLD, frequency:
 
 def sc_clip_normalize(sc: vs.VideoNode, tht_white: float = DEF_THT_WHITE_MIN, tht_black: float = DEF_THT_BLACK_MIN
                       ) -> vs.VideoNode:
+    """Normalise the luma range of a clip for frames in [tht_black, tht_white].
+
+    Used before scene detection to increase sensitivity to smooth scene changes.
+
+    :param sc:         Input GRAY/RGB clip.
+    :param tht_white:  Upper luma bound for normalisation. Default DEF_THT_WHITE_MIN.
+    :param tht_black:  Lower luma bound for normalisation. Default DEF_THT_BLACK_MIN.
+    :return:           Normalised clip (unchanged for very dark/bright frames).
+    """
     def set_normalize(n, f, tht_white: float, tht_black: float) -> vs.VideoFrame:
         frame_np = vsutil.frame_to_np_array(f)
 
@@ -102,6 +129,11 @@ def sc_clip_normalize(sc: vs.VideoNode, tht_white: float = DEF_THT_WHITE_MIN, th
 
 
 def get_sc_props(clip: vs.VideoNode) -> tuple[float, int]:
+    """Read the 'sc_threshold' and 'sc_frequency' properties from the first frame of a clip.
+
+    :param clip: Clip with 'sc_threshold' and 'sc_frequency' frame properties.
+    :return:     Tuple (sc_threshold, sc_frequency); both 0 if properties are not found.
+    """
     sc_threshold = 0
     sc_frequency = 0
 
@@ -116,11 +148,26 @@ def get_sc_props(clip: vs.VideoNode) -> tuple[float, int]:
 
 
 def CopySCDetect(clip: vs.VideoNode, sc: vs.VideoNode) -> vs.VideoNode:
+    """Copy scene-change and HAVC metadata frame properties from sc to clip.
+
+    Copies: _SceneChangePrev, _SceneChangeNext, sc_threshold, sc_frequency, sc_luma, sc_ratio.
+
+    :param clip: Destination clip.
+    :param sc:   Source clip carrying the scene-change frame properties.
+    :return:     clip with frame properties copied from sc.
+    """
     return clip.std.CopyFrameProps(prop_src=sc, props=['_SceneChangePrev', '_SceneChangeNext',
                                                        'sc_threshold', 'sc_frequency', 'sc_luma', 'sc_ratio'])
 
 
 def BuildSCDetect(clip_ref: vs.VideoNode) -> vs.VideoNode:
+    """Create a blank clip with scene-change frame properties copied from clip_ref.
+
+    Useful for propagating SC properties to a synthetic clip of the same length.
+
+    :param clip_ref: Clip whose frame properties and dimensions define the output.
+    :return:         Blank clip with _SceneChangePrev/_SceneChangeNext and HAVC props from clip_ref.
+    """
     clip = vs.core.std.BlankClip(clip=clip_ref, length=clip_ref.num_frames,
                                  fpsnum=clip_ref.fps_num, fpsden=clip_ref.fps_den)
     return clip.std.CopyFrameProps(prop_src=clip_ref, props=['_SceneChangePrev', '_SceneChangeNext',
@@ -129,6 +176,18 @@ def BuildSCDetect(clip_ref: vs.VideoNode) -> vs.VideoNode:
 
 def SceneDetectFromDir(clip: vs.VideoNode, sc_framedir: str = None, merge_ref_frame: bool = False,
                        ref_frame_ext: bool = True) -> vs.VideoNode:
+    """Mark frames as scene changes based on the reference image filenames in sc_framedir.
+
+    A frame is flagged as a scene change when its index matches the number in a filename
+    of the form ref_NNNNNN.ext. If merge_ref_frame is True, non-matching frames inherit
+    their _SceneChangePrev/_SceneChangeNext from the input clip.
+
+    :param clip:            Input clip.
+    :param sc_framedir:     Directory containing reference image files (ref_NNNNNN.ext).
+    :param merge_ref_frame: If True, non-reference frames keep their existing SC properties. Default False.
+    :param ref_frame_ext:   If True, set _SceneChangeNext=1 on reference frames (marks them as external). Default True.
+    :return:                Clip with _SceneChangePrev/_SceneChangeNext properties updated.
+    """
     ref_list = vsutil.get_ref_names(sc_framedir)
 
     if len(ref_list) == 0:
@@ -163,6 +222,13 @@ def SceneDetectFromDir(clip: vs.VideoNode, sc_framedir: str = None, merge_ref_fr
 
 
 class SceneDetection:
+    """Stateful scene-change detector with adaptive ratio, luma filtering, and SSIM post-filtering.
+
+    Maintains per-call state (last reference frame, previous diff, histogram) to implement
+    an adaptive threshold that accounts for local content dynamics. Supports both the
+    misc.SCDetect plugin path and a custom PlaneStats-based path.
+    """
+
     _sc_debug: bool = None
     _sc_last_index = None
     _sc_last_ref = None
@@ -179,6 +245,14 @@ class SceneDetection:
 
     def __init__(self, sc_adaptive_ratio: float = DEF_ADAPTIVE_RATIO_LO, sc_tht_white: float = DEF_THT_WHITE,
                  sc_tht_black: float = DEF_THT_BLACK, sc_frequency: int = 0, sc_debug: bool = False):
+        """Initialise scene detection state.
+
+        :param sc_adaptive_ratio: Ratio threshold for adaptive detection. Default DEF_ADAPTIVE_RATIO_LO.
+        :param sc_tht_white:      Luma upper bound for valid scene changes. Default DEF_THT_WHITE.
+        :param sc_tht_black:      Luma lower bound for valid scene changes. Default DEF_THT_BLACK.
+        :param sc_frequency:      Minimum scene change frequency (frames). Default 0.
+        :param sc_debug:          If True, log debug messages per frame. Default False.
+        """
         self._sc_debug = sc_debug
         self._sc_last_index = None
         self._sc_last_ref = None
@@ -199,7 +273,20 @@ class SceneDetection:
 
     def SceneDetect(self, clip: vs.VideoNode, threshold: float = DEF_THRESHOLD, sc_tht_filter: float = 0,
                     min_length: int = 1, frame_norm: bool = False, tht_offset: int = 1) -> vs.VideoNode:
+        """Run core scene detection on a clip.
 
+        Routes to SceneDetectCustom (for fine thresholds, offsets > 1, or min_length > 1) or
+        misc.SCDetect (standard path) followed by optional SSIM post-filtering and a
+        luma-range filter (filter_black_white).
+
+        :param clip:           Input clip (any format; internally converted to GRAY8).
+        :param threshold:      Luma-change threshold [0, 1]. Default DEF_THRESHOLD.
+        :param sc_tht_filter:  SSIM post-filter threshold [0, 1]. 0 = disabled.
+        :param min_length:     Minimum frames between scene changes. Default 1.
+        :param frame_norm:     Normalise luma before detection. Default False.
+        :param tht_offset:     Frame comparison offset. Default 1.
+        :return:               Clip with _SceneChangePrev/_SceneChangeNext properties set.
+        """
         # add new properties for scene detection
         clip = clip.std.SetFrameProp(prop="sc_luma", floatval=0.5)
         clip = clip.std.SetFrameProp(prop="sc_ratio", floatval=0)
@@ -238,7 +325,15 @@ class SceneDetection:
         return clip_sc
 
     def filter_black_white(self, clip: vs.VideoNode, sc: vs.VideoNode) -> vs.VideoNode:
+        """Filter out scene changes detected in too-dark or too-bright frames.
 
+        Merges SC flags from sc into clip, suppressing them when frame luma is outside
+        [tht_black, tht_white]. Also handles the frequency override.
+
+        :param clip: Original input clip.
+        :param sc:   Clip with raw _SceneChangePrev/_SceneChangeNext flags from misc.SCDetect.
+        :return:     Clip with luma-filtered scene-change properties.
+        """
         def set_scene_change(n, f, freq: int, tht_white: float, tht_black: float) -> vs.VideoFrame:
 
             f_out = f[0].copy()
@@ -280,6 +375,18 @@ class SceneDetection:
 
     def SceneDetectCustom(self, clip: vs.VideoNode, threshold: float = DEF_THRESHOLD, offset: int = 1,
                           min_length: int = 1) -> vs.VideoNode:
+        """Custom scene detection using PlaneStats diff and an adaptive ratio threshold.
+
+        Compares frame[n] with frame[n-offset] via PlaneStats. A scene change is triggered
+        when the diff ratio exceeds sc_adaptive_ratio AND diff > threshold. Includes several
+        override rules for frequency, very high ratios, and luma transitions.
+
+        :param clip:        GRAY8 input clip.
+        :param threshold:   Absolute luma-diff threshold [0, 1]. Default DEF_THRESHOLD.
+        :param offset:      Frame comparison offset in [1, 25]. Default 1.
+        :param min_length:  Minimum frame distance between consecutive detections. Default 1.
+        :return:            GRAY8 clip with _SceneChangePrev/_SceneChangeNext properties set.
+        """
         clip_prev = clip
         for i in range(offset):
             clip_prev = clip_prev.std.DuplicateFrames(frames=0).std.Trim(last=clip.num_frames - 1)
@@ -350,6 +457,17 @@ class SceneDetection:
         return sc
 
     def SceneDetectFilter(self, clip: vs.VideoNode, ssim_threshold: float = 0.55, min_length: int = 1) -> vs.VideoNode:
+        """Post-filter scene changes using SSIM and histogram similarity.
+
+        Processes the clip in batches of 5000 frames to avoid memory pressure. For each
+        candidate scene change, computes SSIM and Hellinger histogram distance against the
+        previous scene-change frame; suppresses detections where images are too similar.
+
+        :param clip:           Clip with candidate _SceneChangePrev flags (must include sc_luma/sc_ratio props).
+        :param ssim_threshold: SSIM threshold below which a detection is accepted [0, 1]. Default 0.55.
+        :param min_length:     Minimum frame distance between accepted scene changes. Default 1.
+        :return:               Clip with refined _SceneChangePrev/_SceneChangeNext properties.
+        """
         t_step = 5000  # batch size for the SSIM filter (to avoid buffer memory problems)
         clip_length = clip.num_frames
 
@@ -366,6 +484,13 @@ class SceneDetection:
         return clip_sc
 
     def _calc_histogram(self, y_img: np.ndarray, bins: int = 256, normalize: bool = True) -> np.ndarray:
+        """Compute a (normalised) histogram of a grayscale image channel.
+
+        :param y_img:     2-D uint8 grayscale image array.
+        :param bins:      Number of histogram bins. Default 256.
+        :param normalize: If True, normalise the histogram to [0, 1]. Default True.
+        :return:          1-D float array of length bins.
+        """
         # Extract Luma channel from the frame image
 
         # Create the histogram with a bin for every rgb value
@@ -377,6 +502,17 @@ class SceneDetection:
 
     def _scene_detect_filter_task(self, t_start: int, clip: vs.VideoNode, tht_ssim: float = 0.55, min_length: int = 1
                                   ) -> vs.VideoNode:
+        """Process one batch of frames for SSIM/histogram post-filtering.
+
+        Computes per-frame SSIM and Hellinger histogram distance relative to the last
+        accepted scene change. Suppresses candidate detections where images are too similar.
+
+        :param t_start:   Absolute frame offset of this batch (for correct global frame numbering).
+        :param clip:      Batch clip with candidate _SceneChangePrev flags.
+        :param tht_ssim:  SSIM threshold; below = scene change accepted. Default 0.55.
+        :param min_length: Minimum frame distance between accepted scene changes. Default 1.
+        :return:          Batch clip with refined _SceneChangePrev/_SceneChangeNext properties.
+        """
         def set_scenechange(n: int, f: vs.VideoFrame, t_start: int, clip: vs.VideoNode, ssim_tht: float,
                             tht_white: float, tht_black, min_length: int = 1) -> vs.VideoFrame:
             fout = f.copy()
@@ -496,7 +632,16 @@ class SceneDetection:
 
 
 def vs_sc_xvid(clip: vs.VideoNode, use_slices: bool = True) -> vs.VideoNode:
+    """Detect scene changes using the SCXvid VapourSynth plugin.
 
+    Converts the clip to YUV420P8 at reduced resolution for analysis, runs scxvid.Scxvid,
+    and copies the resulting _SceneChangePrev/_SceneChangeNext properties back to the
+    original clip.
+
+    :param clip:       Input clip (any format).
+    :param use_slices: Pass use_slices to scxvid.Scxvid. Default True.
+    :return:           Original clip with _SceneChangePrev/_SceneChangeNext frame properties set.
+    """
     vsplugins.load_SCXvid_plugin()
 
     sc_clip = resize_min_HW(clip, min_size = (480, 300))

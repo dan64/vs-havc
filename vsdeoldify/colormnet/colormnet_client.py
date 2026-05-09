@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-09-27
 version:
 LastEditors: Dan64
-LastEditTime: 2026-01-17
+LastEditTime: 2026-04-21
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
@@ -15,7 +15,7 @@ from PIL import Image
 import warnings
 import xmlrpc.client
 from vsdeoldify.colormnet.colormnet_utils import *
-
+from vsdeoldify.vsslib.vsutils import MessageType, HAVC_LogMessage
 
 class ColorMNetClient:
     _instance = None
@@ -35,7 +35,7 @@ class ColorMNetClient:
         if not self._initialized:
             server_address = '127.0.0.1'
             if server_port is None:
-                warnings.warn("ERROR: ColorMNetClient() server port is None")
+                HAVC_LogMessage(MessageType.CRITICAL, "ColorMNet client(): server port is None")
                 return
             self.server_address = server_address
             self.server_port = server_port
@@ -48,7 +48,8 @@ class ColorMNetClient:
                                        max_memory_frames, reset_on_ref_update)
                 self._initialized = True
             except Exception as exe:
-                warnings.warn("ERROR[" + str(type(exe)) + "]: " + str(exe))
+                HAVC_LogMessage(MessageType.CRITICAL,
+                                f"ColorMNet client(): init failed [{type(exe).__name__}]: {exe}")
 
     def is_initialized(self) -> bool:
         return self.server.IsInitialized()
@@ -67,6 +68,35 @@ class ColorMNetClient:
         if frame_i is not None:
             img_bytes_i = image_to_byte_array(frame_i)
             frame_bytes = self.server.ColorizeImage(img_bytes_i, ti)
-            return byte_array_to_image(frame_bytes)
+            result = byte_array_to_image(frame_bytes)
+            self._drain_server_logs()
+            return result
         else:
             return None
+
+    def _drain_server_logs(self):
+        """Pull log messages from the server and forward them to VS."""
+        if self.server is None:
+            return
+        try:
+            messages = self.server.PollLogMessages()
+        except Exception:
+            # Network glitch or server not yet ready: skip silently,
+            # logs are best-effort and must never break inference.
+            return
+        for item in messages:
+            if not item or len(item) < 2:
+                continue
+            level, text = item[0], item[1]
+            try:
+                mt = MessageType(int(level))
+            except ValueError:
+                mt = MessageType.INFORMATION
+            # Never escalate server-side messages to EXCEPTION here: we don't
+            # want a buffered log to raise vs.Error during frame processing.
+            if mt == MessageType.EXCEPTION:
+                mt = MessageType.CRITICAL
+            if mt in (MessageType.DEBUG, MessageType.INFORMATION):
+                mt = MessageType.WARNING
+            HAVC_LogMessage(mt, text)
+

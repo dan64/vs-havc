@@ -9,7 +9,7 @@ from PIL import Image
 import numpy as np
 
 from vsdeoldify.colormnet.dataset.range_transform import im_normalization, im_mean
-from vsdeoldify.colormnet.dataset.tps import random_tps_warp
+#from vsdeoldify.colormnet.dataset.tps import random_tps_warp
 from vsdeoldify.colormnet.dataset.reseed import reseed
 
 
@@ -111,9 +111,10 @@ class StaticTransformDataset(Dataset):
 
             # Use TPS only some of the times
             # Not because TPS is bad -- just that it is too slow and I need to speed up data loading
+            """
             if np.random.rand() < 0.33:
                 this_im, this_gt = random_tps_warp(this_im, this_gt, scale=0.02)
-
+            """
             this_im = self.final_im_transform(this_im)
             this_gt = self.final_gt_transform(this_gt)
 
