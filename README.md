@@ -5,7 +5,7 @@ A Deep Learning based [VapourSynth](https://www.vapoursynth.com/) filter for col
 
 The Vapoursynth filter version has the advantage of coloring the images directly in memory, without the need to use the filesystem to store the video frames.
 
-For this filter is available a [User Guide](https://github.com/dan64/vs-deoldify/blob/main/documentation/HAVC%20User%20Guide.pdf) which provides useful tips and detailed explanations regarding the filter functions and usage. It is strongly recommended reading it before using the filter.
+For this filter is available a [User Guide](https://github.com/dan64/vs-havc/blob/main/documentation/HAVC%20User%20Guide.pdf) which provides useful tips and detailed explanations regarding the filter functions and usage. It is strongly recommended reading it before using the filter.
 
 The filter (_HAVC_ in short) can be considered the _Swiss Army knife_ for coloring videos. It offers a wide range of options and coloring models and filters. It is able to combine the results provided by _DeOldify_ and _DDColor_ (_Colorization_), which are some of the best models available for coloring pictures, providing often a final colorized image that is better than the image obtained from the individual models. But the main strength of this filter is the addition of specialized filters to improve the quality of videos obtained by using these color models and the possibility to improve further the stability by using these models as input to [Deep Exemplar based Video Colorization](https://github.com/zhangmozhe/Deep-Exemplar-based-Video-Colorization) model (_DeepEx_ in short), [DeepRemaster](https://github.com/satoshiiizuka/siggraphasia2019_remastering), [ColorMNet](https://github.com/yyang181/colormnet) and the new **CMNET2** model.
 
@@ -31,7 +31,7 @@ The standalone CMNET2 project (and full technical documentation) is available at
 
 ## Quick Start
 
-To use the HAVC filter is necessary a GPU supporting CUDA, a NVIDIA RTX3060 is the minimum requirement to use this filter satisfactorily. The filter is distributed with the torch package provided with the **Hybrid Windows Addons**. To use it on Desktop (Windows) it is necessary install [Hybrid](https://www.selur.de/downloads) and the related [Addons](https://drive.google.com/drive/folders/1vC_pxwxL0o8fjmg8Okn0RA5rsodTcv9G?usp=drive_link). **Hybrid** is a Qt-based frontend for a lot video filters (including this one) which can convert most input formats to common audio & video formats and containers. Hybrid represents one of the most comprehensive solutions for implementing A.I. video filters and offers the most user-friendly approach to image colorization using the HAVC filter via [VapourSynth](https://www.vapoursynth.com/). In the folder _documentation_ is available a [User Guide](https://github.com/dan64/vs-deoldify/blob/main/documentation/HAVC%20User%20Guide.pdf) that provides detailed information on how to install Hybrid and use it to colorize videos. The Guide also provides tips on how to improve the final quality of colored movies.
+To use the HAVC filter is necessary a GPU supporting CUDA, a NVIDIA RTX3060 is the minimum requirement to use this filter satisfactorily. The filter is distributed with the torch package provided with the **Hybrid Windows Addons**. To use it on Desktop (Windows) it is necessary install [Hybrid](https://www.selur.de/downloads) and the related [Addons](https://drive.google.com/drive/folders/1vC_pxwxL0o8fjmg8Okn0RA5rsodTcv9G?usp=drive_link). **Hybrid** is a Qt-based frontend for a lot video filters (including this one) which can convert most input formats to common audio & video formats and containers. Hybrid represents one of the most comprehensive solutions for implementing A.I. video filters and offers the most user-friendly approach to image colorization using the HAVC filter via [VapourSynth](https://www.vapoursynth.com/). In the folder _documentation_ is available a [User Guide](https://github.com/dan64/vs-havc/blob/main/documentation/HAVC%20User%20Guide.pdf) that provides detailed information on how to install Hybrid and use it to colorize videos. The Guide also provides tips on how to improve the final quality of colored movies.
 
 ## Dependencies
 
@@ -42,16 +42,16 @@ To use the HAVC filter is necessary a GPU supporting CUDA, a NVIDIA RTX3060 is t
 ## Installation
 
 ```
-pip install vsdeoldify-x.x.x-py3-none-any.whl
+pip install vshavc-x.x.x-py3-none-any.whl
 ```
 
-with the version [5.8.0](https://github.com/dan64/vs-deoldify/releases/tag/v4.0.0) of HAVC has been released a modified version of DDColor to manage the Scene Detection properties available in the input clip, this version can be installed with the command:
+with the version [5.8.0](https://github.com/dan64/vs-havc/releases/tag/v4.0.0) of HAVC has been released a modified version of DDColor to manage the Scene Detection properties available in the input clip, this version can be installed with the command:
 
 ```
 pip install vsddcolor-1.0.2-py3-none-any.whl.zip
 ```
 
-with the version 4.5.0 of HAVC has been introduced the support to ColorMNet. All the necessary packages to use ColorMNet (and CMNET2) are included in Hybrid's torch add-on package. For a manual installation not using Hybrid, it is necessary to install all the packages reported in the project page of [ColorMNet](https://github.com/yyang181/colormnet). To simplify the installation, in the release [4.5.0](https://github.com/dan64/vs-deoldify/releases/tag/v4.5.0) of this filter is available as asset the **spatial_correlation_sampler** package compiled against CUDA 12.4, python 3.12 and torch. To install it is necessary to unzip the following archive (using the nearest torch version available in the host system):
+with the version 4.5.0 of HAVC has been introduced the support to ColorMNet. All the necessary packages to use ColorMNet (and CMNET2) are included in Hybrid's torch add-on package. For a manual installation not using Hybrid, it is necessary to install all the packages reported in the project page of [ColorMNet](https://github.com/yyang181/colormnet). To simplify the installation, in the release [4.5.0](https://github.com/dan64/vs-havc/releases/tag/v4.5.0) of this filter is available as asset the **spatial_correlation_sampler** package compiled against CUDA 12.4, python 3.12 and torch. To install it is necessary to unzip the following archive (using the nearest torch version available in the host system):
 
 ```
 spatial_correlation_sampler-0.5.0-py312-cp312-win_amd64_torch-x.x.x.whl.zip
@@ -71,15 +71,15 @@ The models to download are:
 
 The _model files_ have to be copied in the **models** directory usually located in:
 
-.\Lib\site-packages\vsdeoldify\models
+.\Lib\site-packages\vshavc\models
 
 To use ColorMNet and [CMNET2](https://github.com/dan64/cmnet2) it is also necessary to download the file [DINOv2FeatureV6_LocalAtten_s2_154000.pth](https://github.com/yyang181/colormnet/releases/download/v0.1/DINOv2FeatureV6_LocalAtten_s2_154000.pth) and save it in
 
-.\Lib\site-packages\vsdeoldify\colormnet\weights
+.\Lib\site-packages\vshavc\colormnet\weights
 
 A single copy is sufficient: [CMNET2](https://github.com/dan64/cmnet2) automatically locates and reuses the same file, so there is no need to duplicate it in the `colormnet2\weights` directory.
 
-With the version 5.0 of HAVC has been added the model [DeepRemaster](https://github.com/satoshiiizuka/siggraphasia2019_remastering), for using it is necessary to download the file [remasternet.pth.tar](http://iizuka.cs.tsukuba.ac.jp/data/remasternet.pth.tar) (is not a tar, just a "pth" renamed as "pth.tar") and copy it in: ".\Lib\site-packages\vsdeoldify\remaster\model".
+With the version 5.0 of HAVC has been added the model [DeepRemaster](https://github.com/satoshiiizuka/siggraphasia2019_remastering), for using it is necessary to download the file [remasternet.pth.tar](http://iizuka.cs.tsukuba.ac.jp/data/remasternet.pth.tar) (is not a tar, just a "pth" renamed as "pth.tar") and copy it in: ".\Lib\site-packages\vshavc\remaster\model".
 
 At the first usage it is possible that are automatically downloaded by torch the neural networks: **resnet101** and **resnet34**, and starting with the release 4.5.0:  **resnet50**, **resnet18**, **dinov2_vits14_pretrain** and the folder **facebookresearch_dinov2_main**
 
@@ -95,14 +95,14 @@ python -m vsddcolor
 
 The models for **Deep-Exemplar based Video Colorization.** can be installed by downloading the file **colorization_checkpoint.zip** available in: [inference code](https://github.com/zhangmozhe/Deep-Exemplar-based-Video-Colorization/releases/tag/v1.0).
 
-The archive  **colorization_checkpoint.zip** have to be unziped in: .\Lib\site-packages\vsdeoldify\deepex
+The archive  **colorization_checkpoint.zip** have to be unziped in: .\Lib\site-packages\vshavc\deepex
 
 ## Usage
 
 ```python
 # loading plugins
 core.std.LoadPlugin(path="MiscFilters.dll")
-import vsdeoldify as havc
+import vshavc as havc
 
 # changing range from limited to full range for HAVC
 clip = core.resize.Bicubic(clip, range_in_s="limited", range_s="full")
@@ -144,14 +144,14 @@ input_size = render_factor * 16
 
 - In the modified version of _DDColor_ 1.0.1 was added the boolean parameter _scenechange_, if this parameter is set to _True_, will be colored only the frames tagged as scene change.
 
-- In the folder [samples](https://github.com/dan64/vs-deoldify/tree/main/samples) there are some clips and reference images that can be used to test the filter. The clips _sample_colored_sync.mp4_ and _sample_colored_async.mp4_ are useful to test the new video restore functionality added in HAVC 5.0 (described in the User Guide). The clip _sample_colored_sync.mp4_ is fully in sync with the clip _sample_bw_.mp4 and any of the exemplar-based models can be used to colorize it, while the clip _sample_colored_async.mp4_ is not in sync and only _DeepRemaster_ is able to properly colorize the movie.
+- In the folder [samples](https://github.com/dan64/vs-havc/tree/main/samples) there are some clips and reference images that can be used to test the filter. The clips _sample_colored_sync.mp4_ and _sample_colored_async.mp4_ are useful to test the new video restore functionality added in HAVC 5.0 (described in the User Guide). The clip _sample_colored_sync.mp4_ is fully in sync with the clip _sample_bw_.mp4 and any of the exemplar-based models can be used to colorize it, while the clip _sample_colored_async.mp4_ is not in sync and only _DeepRemaster_ is able to properly colorize the movie.
 
 ## Filter Usage
 
 The filter was developed having in mind to use it mainly to colorize movies. Both DeOldify and DDcolor are good models for coloring pictures (see the _Comparison of Models_). But when are used for coloring movies they are introducing artifacts that usually are not noticeable in the images. Especially in dark scenes both DeOldify and DDcolor are not able to understand what it is the dark area and what color to give it, they often decide to color these dark areas with blue, then in the next frame this area could become red and then in the next frame return to blue, introducing a flashing psychedelic effect when all the frames are put in a movie.
 To try to solve this problem has been developed _pre-_ and _post-_ process filters. It is possible to see them in the Hybrid screenshot below.
 
-![Hybrid Coloring page](https://github.com/dan64/vs-deoldify/blob/main/hybrid_setup/Model_D%2BD_filters.JPG)
+![Hybrid Coloring page](https://github.com/dan64/vs-havc/blob/main/hybrid_setup/Model_D%2BD_filters.JPG)
 
 The main filters introduced are:
 
@@ -172,7 +172,7 @@ As explained previously the stabilization is performed by averaging the past/fut
 ### Chroma Adjustment
 
 Unfortunately when are applied to movies the color models are subject to assign unstable colors to the frames especially on the red/violet chroma range. This problem is more visible on DDColor than on DeOldify.
-To mitigate this issue was necessary to implement some kind of chroma adjustment. This adjustment allows to de-saturate all the colors included in a given color range. The color range must be specified in the HSV color space. This color space is useful because all the chroma is represented by only the parameter "Hue". In this color space the colors are specified in degree (from 0 to 360), as shown in the [DDeoldify Hue Wheel](https://github.com/dan64/vs-deoldify/blob/main/hybrid_setup/ddeoldify_hue_wheel.jpg).
+To mitigate this issue was necessary to implement some kind of chroma adjustment. This adjustment allows to de-saturate all the colors included in a given color range. The color range must be specified in the HSV color space. This color space is useful because all the chroma is represented by only the parameter "Hue". In this color space the colors are specified in degree (from 0 to 360), as shown in the [DDeoldify Hue Wheel](https://github.com/dan64/vs-havc/blob/main/hybrid_setup/ddeoldify_hue_wheel.jpg).
 It is possible to apply this adjustment on all filters described previously.
 Depending on the filter the adjustment can be enabled using the following syntax:
 
@@ -186,7 +186,7 @@ for example this assignment:
 chroma_range = "290:330,rose"
 ```
 
-specify the range of hue colors: 290-360, because "rose" is [hue wheel name](https://github.com/dan64/vs-deoldify/blob/main/hybrid_setup/ddeoldify_hue_wheel.jpg) that correspond to the range:330-360.
+specify the range of hue colors: 290-360, because "rose" is [hue wheel name](https://github.com/dan64/vs-havc/blob/main/hybrid_setup/ddeoldify_hue_wheel.jpg) that correspond to the range:330-360.
 
 It is possible to specify more ranges by using the comma "," separator.
 
@@ -212,7 +212,7 @@ To simplify the usage of this filter has been added the Preset _ColorFix_ which 
 
 Using an approach similar to _Chroma Adjustment_ has been introduced the possibility to remap a given gange of colors in another chroma range. This remapping is controlled by the Preset _ColorMap_. For example the preset "blue->brown" allows to remap all the chroma combinations of _blue_ in the color _brown_. It is not expected that this filter can be applied on a full movie, but it could be useful to remap the color on some portion of a movie.
 
-In the [HAVC User Guide](https://github.com/dan64/vs-deoldify/blob/main/documentation/HAVC%20User%20Guide.pdf) are provided useful tips on how to use both the _Chroma Adjustment_ and _Color Mapping_ features provided by this filter.
+In the [HAVC User Guide](https://github.com/dan64/vs-havc/blob/main/documentation/HAVC%20User%20Guide.pdf) are provided useful tips on how to use both the _Chroma Adjustment_ and _Color Mapping_ features provided by this filter.
 
 ### Merging the models
 
@@ -246,16 +246,16 @@ Taking inspiration from the article published on Habr: [Mode on: Comparing the t
 The added models are:
 
 **D+D**: DeOldify (with model _Video_ & render_factor = 24) + DDColor (with model _Artistic_ and render_factor = 24)
-![Hybrid D+D](https://github.com/dan64/vs-deoldify/blob/main/hybrid_setup/Model_D%2BD.JPG)
+![Hybrid D+D](https://github.com/dan64/vs-havc/blob/main/hybrid_setup/Model_D%2BD.JPG)
 
 **DD**: DDColor (with model _Artistic_ and and render_factor = 24 equivalent to input_size = 384)
-![Hybrid_DD](https://github.com/dan64/vs-deoldify/blob/main/hybrid_setup/Model_DD.JPG)
+![Hybrid_DD](https://github.com/dan64/vs-havc/blob/main/hybrid_setup/Model_DD.JPG)
 
 **DS**: DeOldify (with model _Stable_ & render_factor =24)
-![Hybrid D+D](https://github.com/dan64/vs-deoldify/blob/main/hybrid_setup/Model_DS.JPG)
+![Hybrid D+D](https://github.com/dan64/vs-havc/blob/main/hybrid_setup/Model_DS.JPG)
 
 **DV**: DeOldify (with model _Video_ & render_factor = 24)
-![Hybrid D+D](https://github.com/dan64/vs-deoldify/blob/main/hybrid_setup/Model_DV.JPG)
+![Hybrid D+D](https://github.com/dan64/vs-havc/blob/main/hybrid_setup/Model_DV.JPG)
 
 **T241**: ColTran + TensorFlow 2.4.1 model as shown in [Habr](https://habr.com/en/companies/ruvds/articles/568426/)
 
@@ -267,14 +267,14 @@ The combined model **D+D** (DeOldify + DDColor) was the best overall performer, 
 
 In a second test set focused on combinations of DeOldify _Artistic_ and _Stable_ with different DDColor variants, all the combined models performed similarly well, confirming the positive impact of merging the two model families regardless of the specific variants used.
 
-The full per-image **CIEDE2000** results, the comparison methodology and the detailed analysis of both test sets are available in [documentation/MODEL_COMPARISON.md](https://github.com/dan64/vs-deoldify/blob/main/documentation/MODEL_COMPARISON.md).
+The full per-image **CIEDE2000** results, the comparison methodology and the detailed analysis of both test sets are available in [documentation/MODEL_COMPARISON.md](https://github.com/dan64/vs-havc/blob/main/documentation/MODEL_COMPARISON.md).
 
 ## Exemplar-based Models
 
 As stated previously to stabilize further the colorized videos it is possible to use the frames colored by HAVC as reference frames (exemplar) as input to the supported exemplar-based models: [CMNET2](https://github.com/dan64/cmnet2), [ColorMNet](https://github.com/yyang181/colormnet), [Deep Exemplar based Video Colorization](https://github.com/zhangmozhe/Deep-Exemplar-based-Video-Colorization) and [DeepRemaster](https://github.com/satoshiiizuka/siggraphasia2019_remastering).
 
 In Hybrid the _Exemplar Models_ have their own panel, as shown in the following picture:
-![Hybrid DeepEx](https://github.com/dan64/vs-deoldify/blob/main/hybrid_setup/Model_DeepEx.JPG)
+![Hybrid DeepEx](https://github.com/dan64/vs-havc/blob/main/hybrid_setup/Model_DeepEx.JPG)
 
 The available exemplar models are selected via the field **Model** with the following values:
 
@@ -326,7 +326,7 @@ Unfortunately the exemplar-based methods other than [CMNET2](https://github.com/
 - 2 = reference frames are merged with medium weight
 - 3 = reference frames are merged with high weight
 
-When the field **Ref merge** is set to a value greater than 0, the field **SC min freq** is set =1, to allows the merge for every frame (more details are provided in [HAVC User Guide](https://github.com/dan64/vs-deoldify/blob/main/documentation/HAVC%20User%20Guide.pdf)). Note that **Ref merge** is intended for the exemplar models that suffer from the "new features" problem; with [CMNET2](https://github.com/dan64/cmnet2) it is not disabled but is not useful, so the recommended value is 0.
+When the field **Ref merge** is set to a value greater than 0, the field **SC min freq** is set =1, to allows the merge for every frame (more details are provided in [HAVC User Guide](https://github.com/dan64/vs-havc/blob/main/documentation/HAVC%20User%20Guide.pdf)). Note that **Ref merge** is intended for the exemplar models that suffer from the "new features" problem; with [CMNET2](https://github.com/dan64/cmnet2) it is not disabled but is not useful, so the recommended value is 0.
 
 Finally the flag **Reference frames only** can be used to export the reference frames generated with the method **HAVC** and defined by the parameters **SC thresh**, **SC min freq** fields.
 
@@ -339,7 +339,7 @@ Suggested values for CMNET2:
 - min = 10, max = 500
 - if = 0 (default), the window size is automatically set to 50
 
-For ColorMNet and DeepRemaster, **DeepExMaxMemFrames** keeps its previous meaning (max number of encoded frames / max number of reference frames in memory). Note that the suggested ranges have been revised in 5.8.0; please refer to the docstring of `HAVC_main()` and to the [User Guide](https://github.com/dan64/vs-deoldify/blob/main/documentation/HAVC%20User%20Guide.pdf) for the up-to-date values.
+For ColorMNet and DeepRemaster, **DeepExMaxMemFrames** keeps its previous meaning (max number of encoded frames / max number of reference frames in memory). Note that the suggested ranges have been revised in 5.8.0; please refer to the docstring of `HAVC_main()` and to the [User Guide](https://github.com/dan64/vs-havc/blob/main/documentation/HAVC%20User%20Guide.pdf) for the up-to-date values.
 
 ## Coloring using Hybrid
 
@@ -370,13 +370,13 @@ then enable the _Exemplar Models_ check box and set
 
 In the following picture are shown the suggested parameters:
 
-![Hybrid Preset](https://github.com/dan64/vs-deoldify/blob/main/hybrid_setup/Model_Presets.JPG)
+![Hybrid Preset](https://github.com/dan64/vs-havc/blob/main/hybrid_setup/Model_Presets.JPG)
 
-The suggested settings are appropriate for a medium powered GPU (RTX4070 or above). In the [HAVC User Guide](https://github.com/dan64/vs-deoldify/blob/main/documentation/HAVC%20User%20Guide.pdf) are provided more settings depending on the available hardware.
+The suggested settings are appropriate for a medium powered GPU (RTX4070 or above). In the [HAVC User Guide](https://github.com/dan64/vs-havc/blob/main/documentation/HAVC%20User%20Guide.pdf) are provided more settings depending on the available hardware.
 
 ## Conclusions
 
-In Summary **HAVC** is able to provide often a final colorized image that is better than the image obtained from the individual models, and can be considered an improvement respect to the current Models. With the introduction of **[CMNET2](https://github.com/dan64/cmnet2)** in version 5.8.0, the temporal consistency and color fidelity over long videos have been further improved, making HAVC an even more solid choice for video colorization. It is highly recommended to read the [HAVC User Guide](https://github.com/dan64/vs-deoldify/blob/main/documentation/HAVC%20User%20Guide.pdf) which provides useful tips on how to improve the colored movies.
+In Summary **HAVC** is able to provide often a final colorized image that is better than the image obtained from the individual models, and can be considered an improvement respect to the current Models. With the introduction of **[CMNET2](https://github.com/dan64/cmnet2)** in version 5.8.0, the temporal consistency and color fidelity over long videos have been further improved, making HAVC an even more solid choice for video colorization. It is highly recommended to read the [HAVC User Guide](https://github.com/dan64/vs-havc/blob/main/documentation/HAVC%20User%20Guide.pdf) which provides useful tips on how to improve the colored movies.
 
 As a final consideration I would like to point out that the test results showed that the images coloring technology is mature enough to be used concretely both for coloring images and, thanks to **Hybrid**, videos.
 

@@ -10,8 +10,8 @@ exclude = [
 ]
 
 [project]
-name = "vsdeoldify"
-version = "5.8.0"
+name = "vshavc"
+version = "5.8.1"
 description = "HAVC functions for VapourSynth"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,5 +35,5 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/dan64/vs-deoldify"
-"Bug Tracker" = "https://github.com/dan64/vs-deoldify/issues"
+"Homepage" = "https://github.com/dan64/vs-havc"
+"Bug Tracker" = "https://github.com/dan64/vs-havc/issues"
