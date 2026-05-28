@@ -13,14 +13,14 @@ Utility functions to load Vapoursynth plugins dynamically.
 
 import vapoursynth as vs
 from pathlib import Path
-from vsdeoldify.vsslib.mcomb import vs_combine_models
-from vsdeoldify.vsslib.vsfilters import vs_tweak
-from vsdeoldify.vsslib.vsresize import resize_min_HW
-from vsdeoldify.vsslib.vsutils import HAVC_LogMessage, MessageType, frame_to_image
+from vshavc.vsslib.mcomb import vs_combine_models
+from vshavc.vsslib.vsfilters import vs_tweak
+from vshavc.vsslib.vsresize import resize_min_HW
+from vshavc.vsslib.vsutils import HAVC_LogMessage, MessageType, frame_to_image
 
-from vsdeoldify.vsslib.constants import *
+from vshavc.vsslib.constants import *
 
-from vsdeoldify.vsslib.__int__ import *
+from vshavc.vsslib.__int__ import *
 
 """
 ------------------------------------------------------------------------------- 

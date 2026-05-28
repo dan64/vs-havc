@@ -1,5 +1,5 @@
 import torch.nn as nn
-import vsdeoldify.deepex.utils.vgg_util as vgg_util
+import vshavc.deepex.utils.vgg_util as vgg_util
 from torchvision import models
 
 

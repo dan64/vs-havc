@@ -20,10 +20,10 @@ import threading
 from xmlrpc.server import SimpleXMLRPCServer
 from xmlrpc.server import SimpleXMLRPCRequestHandler
 
-from vsdeoldify.colormnet import ColorMNetRender
-from vsdeoldify.colormnet.colormnet_utils import *
+from vshavc.colormnet import ColorMNetRender
+from vshavc.colormnet.colormnet_utils import *
 
-from vsdeoldify.colormnet.colormnet_logbuffer import ServerLogBuffer, log_warning, log_info
+from vshavc.colormnet.colormnet_logbuffer import ServerLogBuffer, log_warning, log_info
 
 package_dir = os.path.dirname(os.path.realpath(__file__))
 

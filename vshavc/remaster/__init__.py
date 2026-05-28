@@ -21,15 +21,15 @@ from __future__ import annotations
 import torch
 from functools import partial
 
-from vsdeoldify.vsslib.imfilters import image_weighted_merge
-from vsdeoldify.vsslib.vsutils import debug_ModifyFrame
-from vsdeoldify.vsslib.vsfilters import vs_tweak
-from vsdeoldify.vsslib.vsscdect import BuildSCDetect
+from vshavc.vsslib.imfilters import image_weighted_merge
+from vshavc.vsslib.vsutils import debug_ModifyFrame
+from vshavc.vsslib.vsfilters import vs_tweak
+from vshavc.vsslib.vsscdect import BuildSCDetect
 
-from vsdeoldify.vsslib.constants import *
+from vshavc.vsslib.constants import *
 
-from vsdeoldify.remaster.remaster_render import RemasterColorizer, RemasterEngine
-from vsdeoldify.remaster.remaster_utils import *
+from vshavc.remaster.remaster_render import RemasterColorizer, RemasterEngine
+from vshavc.remaster.remaster_utils import *
 
 
 os.environ["CUDA_MODULE_LOADING"] = "LAZY"

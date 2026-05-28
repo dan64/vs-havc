@@ -8,7 +8,7 @@ LastEditTime: 2026-04-20
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
-Constants for vs-deoldify functions.
+Constants for vs-havc functions.
 """
 DEF_LEVEL_NONE: int = 0
 DEF_LEVEL_INFO: int = 1

@@ -8,10 +8,10 @@ from torchvision.transforms import InterpolationMode
 from PIL import Image
 import numpy as np
 
-from vsdeoldify.colormnet2.dataset.range_transform import im_normalization, im_mean, im_rgb2lab_normalization, ToTensor, RGB2Lab
-from vsdeoldify.colormnet2.dataset.reseed import reseed
+from vshavc.colormnet2.dataset.range_transform import im_normalization, im_mean, im_rgb2lab_normalization, ToTensor, RGB2Lab
+from vshavc.colormnet2.dataset.reseed import reseed
 
-import vsdeoldify.colormnet2.util.functional as F
+import vshavc.colormnet2.util.functional as F
 
 class DAVISVidevoDataset(Dataset):
     """

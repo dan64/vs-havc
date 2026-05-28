@@ -14,14 +14,14 @@ URL: https://github.com/dan64/cmnet2
 """
 from __future__ import annotations, print_function
 
-from vsdeoldify.colormnet2.colormnet2_render import ColorMNetRender2
-from vsdeoldify.colormnet2.colormnet2_utils import *
-from vsdeoldify.colormnet2.colormnet2_server import ColorMNetServer2
-from vsdeoldify.colormnet2.colormnet2_client import ColorMNetClient2
-from vsdeoldify.vsslib.imfilters import image_weighted_merge
-from vsdeoldify.vsslib.constants import *
-from vsdeoldify.vsslib.vsfilters import vs_tweak
-from vsdeoldify.vsslib.vsutils import MessageType, HAVC_LogMessage, debug_ModifyFrame
+from vshavc.colormnet2.colormnet2_render import ColorMNetRender2
+from vshavc.colormnet2.colormnet2_utils import *
+from vshavc.colormnet2.colormnet2_server import ColorMNetServer2
+from vshavc.colormnet2.colormnet2_client import ColorMNetClient2
+from vshavc.vsslib.imfilters import image_weighted_merge
+from vshavc.vsslib.constants import *
+from vshavc.vsslib.vsfilters import vs_tweak
+from vshavc.vsslib.vsutils import MessageType, HAVC_LogMessage, debug_ModifyFrame
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"

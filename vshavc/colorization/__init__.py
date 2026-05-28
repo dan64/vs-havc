@@ -21,7 +21,7 @@ import os
 #import torch
 #import torch.backends.cudnn as cudnn
 
-from vsdeoldify.colorization.colorizers import *
+from vshavc.colorization.colorizers import *
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"

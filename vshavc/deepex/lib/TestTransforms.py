@@ -9,7 +9,7 @@ from PIL import Image
 from kornia.geometry import Scale
 from skimage import color
 
-import vsdeoldify.deepex.lib.functional as F
+import vshavc.deepex.lib.functional as F
 
 __all__ = [
     "Compose",

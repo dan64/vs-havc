@@ -1,8 +1,8 @@
 import torch
 import warnings
 
-from vsdeoldify.colormnet.inference.kv_memory_store import KeyValueMemoryStore
-from vsdeoldify.colormnet.model.memory_util import *
+from vshavc.colormnet.inference.kv_memory_store import KeyValueMemoryStore
+from vshavc.colormnet.model.memory_util import *
 
 
 class MemoryManager:

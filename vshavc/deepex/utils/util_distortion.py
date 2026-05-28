@@ -2,7 +2,7 @@ import math
 import random
 
 import cv2
-import vsdeoldify.deepex.lib.functional as F
+import vshavc.deepex.lib.functional as F
 import numpy as np
 from PIL import Image
 from scipy.ndimage.filters import gaussian_filter

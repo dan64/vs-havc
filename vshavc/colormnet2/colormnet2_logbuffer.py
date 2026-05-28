@@ -7,7 +7,7 @@ Description:
 Thread-safe log buffer used by the CMNET2 RPC server to collect messages
 that will be polled by the client and forwarded to the VapourSynth log.
 
-Levels follow vsdeoldify.vsslib.vsutils.MessageType integer values:
+Levels follow vshavc.vsslib.vsutils.MessageType integer values:
   0=DEBUG, 1=INFORMATION, 2=WARNING, 3=CRITICAL, 4=FATAL
 """
 from collections import deque

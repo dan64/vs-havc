@@ -15,7 +15,7 @@ import numpy as np
 import cv2
 from PIL import Image
 import vapoursynth as vs
-from vsdeoldify.vsslib.nputils import np_image_mask_merge, np_weighted_merge, np_hue_add, w_np_image_mask_merge, isfloat
+from vshavc.vsslib.nputils import np_image_mask_merge, np_weighted_merge, np_hue_add, w_np_image_mask_merge, isfloat
 
 """
 ------------------------------------------------------------------------------- 

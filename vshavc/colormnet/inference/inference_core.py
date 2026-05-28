@@ -1,8 +1,8 @@
-from vsdeoldify.colormnet.inference.memory_manager import MemoryManager
-from vsdeoldify.colormnet.model.network import ColorMNet
-from vsdeoldify.colormnet.model.aggregate import aggregate
+from vshavc.colormnet.inference.memory_manager import MemoryManager
+from vshavc.colormnet.model.network import ColorMNet
+from vshavc.colormnet.model.aggregate import aggregate
 
-from vsdeoldify.colormnet.util.tensor_util import pad_divide_by, unpad
+from vshavc.colormnet.util.tensor_util import pad_divide_by, unpad
 import torch
 
 

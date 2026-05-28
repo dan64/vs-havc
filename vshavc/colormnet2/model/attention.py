@@ -4,7 +4,7 @@ import pdb
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from vsdeoldify.colormnet2.model.basic import DropOutLogit, ScaleOffset, DWConv2d
+from vshavc.colormnet2.model.basic import DropOutLogit, ScaleOffset, DWConv2d
 
 def multiply_by_ychunks(x, y, chunks=1):
     if chunks <= 1:

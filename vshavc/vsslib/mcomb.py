@@ -17,13 +17,13 @@ from PIL import Image
 from functools import partial
 from typing import Tuple
 
-from vsdeoldify.vsslib.imfilters import image_luma_merge, w_image_luma_merge, image_weighted_merge, get_image_luma
-from vsdeoldify.vsslib.imfilters import chroma_stabilizer, image_tweak, chroma_stabilizer_adaptive
-from vsdeoldify.vsslib.vsfilters import vs_tweak, vs_sc_recover_clip_color, vs_sc_recover_gradient_color
-from vsdeoldify.vsslib.vsfilters import vs_sc_recover_clip_luma, vs_simple_merge
-from vsdeoldify.vsslib.vsutils import HAVC_LogMessage, MessageType, frame_to_image, image_to_frame, get_ref_images
+from vshavc.vsslib.imfilters import image_luma_merge, w_image_luma_merge, image_weighted_merge, get_image_luma
+from vshavc.vsslib.imfilters import chroma_stabilizer, image_tweak, chroma_stabilizer_adaptive
+from vshavc.vsslib.vsfilters import vs_tweak, vs_sc_recover_clip_color, vs_sc_recover_gradient_color
+from vshavc.vsslib.vsfilters import vs_sc_recover_clip_luma, vs_simple_merge
+from vshavc.vsslib.vsutils import HAVC_LogMessage, MessageType, frame_to_image, image_to_frame, get_ref_images
 
-from vsdeoldify.vsslib.constants import *
+from vshavc.vsslib.constants import *
 
 """
 ------------------------------------------------------------------------------- 
@@ -670,7 +670,7 @@ class HAVCimageEngine:
         self._merge_weight = merge_weight
 
         # Resolve package_dir from this file's location: mcomb.py is in vsslib/,
-        # so the parent directory is the vsdeoldify package root, which is what
+        # so the parent directory is the vshavc package root, which is what
         # ModelImageRender expects.
         self._package_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
@@ -685,13 +685,13 @@ class HAVCimageEngine:
         if self._deoldify_engine is None and self._merge_weight != 1:
             # Ensure GPU device is properly configured before loading models.
             # Without this, the model may silently load on CPU (~10x slower).
-            from vsdeoldify.deoldify import device
-            from vsdeoldify.deoldify.device_id import DeviceId
+            from vshavc.deoldify import device
+            from vshavc.deoldify.device_id import DeviceId
             if not device.is_gpu():
                 device.set(DeviceId.GPU0)
 
             # Imported lazily to keep the import surface minimal at module load.
-            from vsdeoldify.deoldify.visualize import ModelImageRender
+            from vshavc.deoldify.visualize import ModelImageRender
             self._deoldify_engine = ModelImageRender(
                 package_dir=self._package_dir,
                 modelname=self._modelname,

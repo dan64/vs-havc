@@ -25,16 +25,16 @@ from PIL import Image
 import numpy as np
 import math
 import vapoursynth as vs
-from vsdeoldify.vsslib.constants import DEF_MAX_MEMORY_FRAMES
+from vshavc.vsslib.constants import DEF_MAX_MEMORY_FRAMES
 
-from vsdeoldify.colormnet2.dataset.range_transform import im_normalization, im_rgb2lab_normalization, ToTensor, RGB2Lab
-from vsdeoldify.colormnet2.model.network import ColorMNet
-from vsdeoldify.colormnet2.inference.inference_core import InferenceCore
-from vsdeoldify.colormnet2.util.transforms import lab2rgb_transform_PIL
-from vsdeoldify.vsslib.mcomb import HAVCimageEngine
-from vsdeoldify.vsslib.imfilters import image_weighted_merge
-from vsdeoldify.colormnet2.colormnet2_logbuffer import log_warning as _buf_warning, log_debug as _buf_debug
-from vsdeoldify.vsslib.vsutils import MessageType, HAVC_LogMessage
+from vshavc.colormnet2.dataset.range_transform import im_normalization, im_rgb2lab_normalization, ToTensor, RGB2Lab
+from vshavc.colormnet2.model.network import ColorMNet
+from vshavc.colormnet2.inference.inference_core import InferenceCore
+from vshavc.colormnet2.util.transforms import lab2rgb_transform_PIL
+from vshavc.vsslib.mcomb import HAVCimageEngine
+from vshavc.vsslib.imfilters import image_weighted_merge
+from vshavc.colormnet2.colormnet2_logbuffer import log_warning as _buf_warning, log_debug as _buf_debug
+from vshavc.vsslib.vsutils import MessageType, HAVC_LogMessage
 
 import warnings
 

@@ -14,8 +14,8 @@ import os
 from PIL import Image
 import warnings
 import xmlrpc.client
-from vsdeoldify.colormnet.colormnet_utils import *
-from vsdeoldify.vsslib.vsutils import MessageType, HAVC_LogMessage
+from vshavc.colormnet.colormnet_utils import *
+from vshavc.vsslib.vsutils import MessageType, HAVC_LogMessage
 
 class ColorMNetClient:
     _instance = None

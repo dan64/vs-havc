@@ -21,9 +21,9 @@ import math
 import os
 import sys
 import vapoursynth as vs
-from vsdeoldify.remaster.remaster_utils import *
-from vsdeoldify.vsslib.constants import *
-from vsdeoldify.vsslib.vsutils import *
+from vshavc.remaster.remaster_utils import *
+from vshavc.vsslib.constants import *
+from vshavc.vsslib.vsutils import *
 
 Tensor = torch.Tensor
 
@@ -114,7 +114,7 @@ class RemasterColorizer:
         model_path = os.path.join(model_dir, 'remasternet.pth.tar')
         state_dict = torch.load(model_path)
 
-        self.modelC = __import__('vsdeoldify.remaster.model.remasternet', fromlist=['NetworkC']).NetworkC()
+        self.modelC = __import__('vshavc.remaster.model.remasternet', fromlist=['NetworkC']).NetworkC()
         self.modelC.load_state_dict(state_dict['modelC'])
         self.modelC = self.modelC.to(self.device)
         self.modelC.eval()
@@ -338,7 +338,7 @@ class RemasterEngine:
         model_path = os.path.join(model_dir, 'remasternet.pth.tar')
         state_dict = torch.load(model_path)
 
-        self.modelC = __import__('vsdeoldify.remaster.model.remasternet', fromlist=['NetworkC']).NetworkC()
+        self.modelC = __import__('vshavc.remaster.model.remasternet', fromlist=['NetworkC']).NetworkC()
         self.modelC.load_state_dict(state_dict['modelC'])
         self.modelC = self.modelC.to(self.device)
         self.modelC.eval()

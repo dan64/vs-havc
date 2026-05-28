@@ -31,35 +31,35 @@ os.environ["TORCH_LOGS"] = "-all"
 import pathlib
 import math
 
-from vsdeoldify.havc_utils import _get_tune_id, convert_format_RGB24, restore_format, HAVC_read_video, rgb_denoise
-from vsdeoldify.havc_utils import  rgb_balance, rgb_equalizer, vs_auto_levels
-from vsdeoldify.vsslib.mcomb import vs_sc_combine_models, vs_combine_models, vs_ext_reference_clip, ChromaRetentionMerge
-from vsdeoldify.vsslib.vsfilters import vs_rgb_normalize, vs_simple_merge, vs_tweak, vs_sc_colormap, vs_sc_dark_tweak
-from vsdeoldify.vsslib.vsfilters import  vs_sc_chroma_bright_tweak, vs_sc_recover_clip_luma, vs_recover_clip_luma
-from vsdeoldify.vsslib.vsfilters import vs_dark_tweak, vs_chroma_bright_tweak, vs_colormap, vs_chroma_stabilizer_ex
-from vsdeoldify.vsslib.vsfilters import vs_get_clip_frame
-from vsdeoldify.vsslib.vsmodels import vs_sc_deoldify, vs_sc_ddcolor, vs_colormnet, vs_deepex, vs_deepremaster
-from vsdeoldify.vsslib.vsmodels import vs_colormnet2
-from vsdeoldify.vsslib.vsplugins import vs_reduce_flicker, vs_timecube
-from vsdeoldify.vsslib.vsretinex import vs_retinex
-from vsdeoldify.vsslib.vsutils import vs_sc_export_frames, vs_list_export_frames, HAVC_LogMessage, MessageType
-from vsdeoldify.vsslib.vsutils import frame_to_image
-from vsdeoldify.vsslib.vsresize import SmartResizeColorizer, SmartResizeReference, get_render_size
-from vsdeoldify.vsslib.vsscdect import SceneDetectFromDir, SceneDetect, CopySCDetect
-from vsdeoldify.vsslib.vsscdect import get_sc_props, vs_mv_sc_detect, vs_sc_xvid
-from vsdeoldify.vsslib.vsscdetect_edge import SceneDetectEdges
-from vsdeoldify.vsslib.vstiles4 import ClipTiles
-from vsdeoldify.vsslib.vstiles4 import vs_slice_into_2_horizontal_tiles, vs_reconstruct_from_2_horizontal_tiles
-from vsdeoldify.vsslib.vstiles4 import vs_slice_into_2x2_overlapping_tiles, vs_reconstruct_from_2x2_overlapping_tiles
+from vshavc.havc_utils import _get_tune_id, convert_format_RGB24, restore_format, HAVC_read_video, rgb_denoise
+from vshavc.havc_utils import  rgb_balance, rgb_equalizer, vs_auto_levels
+from vshavc.vsslib.mcomb import vs_sc_combine_models, vs_combine_models, vs_ext_reference_clip, ChromaRetentionMerge
+from vshavc.vsslib.vsfilters import vs_rgb_normalize, vs_simple_merge, vs_tweak, vs_sc_colormap, vs_sc_dark_tweak
+from vshavc.vsslib.vsfilters import  vs_sc_chroma_bright_tweak, vs_sc_recover_clip_luma, vs_recover_clip_luma
+from vshavc.vsslib.vsfilters import vs_dark_tweak, vs_chroma_bright_tweak, vs_colormap, vs_chroma_stabilizer_ex
+from vshavc.vsslib.vsfilters import vs_get_clip_frame
+from vshavc.vsslib.vsmodels import vs_sc_deoldify, vs_sc_ddcolor, vs_colormnet, vs_deepex, vs_deepremaster
+from vshavc.vsslib.vsmodels import vs_colormnet2
+from vshavc.vsslib.vsplugins import vs_reduce_flicker, vs_timecube
+from vshavc.vsslib.vsretinex import vs_retinex
+from vshavc.vsslib.vsutils import vs_sc_export_frames, vs_list_export_frames, HAVC_LogMessage, MessageType
+from vshavc.vsslib.vsutils import frame_to_image
+from vshavc.vsslib.vsresize import SmartResizeColorizer, SmartResizeReference, get_render_size
+from vshavc.vsslib.vsscdect import SceneDetectFromDir, SceneDetect, CopySCDetect
+from vshavc.vsslib.vsscdect import get_sc_props, vs_mv_sc_detect, vs_sc_xvid
+from vshavc.vsslib.vsscdetect_edge import SceneDetectEdges
+from vshavc.vsslib.vstiles4 import ClipTiles
+from vshavc.vsslib.vstiles4 import vs_slice_into_2_horizontal_tiles, vs_reconstruct_from_2_horizontal_tiles
+from vshavc.vsslib.vstiles4 import vs_slice_into_2x2_overlapping_tiles, vs_reconstruct_from_2x2_overlapping_tiles
 
-from vsdeoldify.deoldify import device
-from vsdeoldify.deoldify.device_id import DeviceId
-from vsdeoldify.deepex import deepex_colorizer, get_deepex_size, ModelColorizer
-import vsdeoldify.remaster
+from vshavc.deoldify import device
+from vshavc.deoldify.device_id import DeviceId
+from vshavc.deepex import deepex_colorizer, get_deepex_size, ModelColorizer
+import vshavc.remaster
 
-import vsdeoldify.vsslib.constants as constants
+import vshavc.vsslib.constants as constants
 
-__version__ = "5.8.0"
+__version__ = "5.8.1"
 
 import warnings
 import logging

@@ -15,20 +15,20 @@ import math
 import torch
 from functools import partial
 
-from vsdeoldify.deoldify.visualize import ModelImageRender
-#from vsdeoldify.deoldify.visualize import *
-from vsdeoldify.remaster import vs_sc_remaster_colorize
-from vsdeoldify.vsslib.imfilters import image_weighted_merge
-from vsdeoldify.vsslib.vsfilters import vs_sc_tweak, sc_constrained_tweak, vs_sc_adjust_clip_hue, vs_recover_clip_luma
-from vsdeoldify.vsslib.vsutils import frame_to_image, image_to_frame, frame_to_np_array, np_array_to_frame
-from vsdeoldify.vsslib.vsutils import debug_ModifyFrame
-from vsdeoldify.colormnet import vs_colormnet_remote, vs_colormnet_local
-from vsdeoldify.colormnet2 import vs_colormnet2_remote, vs_colormnet2_local
-from vsdeoldify.deepex import deepex_colorizer, ModelColorizer
-from vsdeoldify.colorization import ModelColorization
-from vsdeoldify.havc_utils import rgb_denoise, vs_auto_levels
+from vshavc.deoldify.visualize import ModelImageRender
+#from vshavc.deoldify.visualize import *
+from vshavc.remaster import vs_sc_remaster_colorize
+from vshavc.vsslib.imfilters import image_weighted_merge
+from vshavc.vsslib.vsfilters import vs_sc_tweak, sc_constrained_tweak, vs_sc_adjust_clip_hue, vs_recover_clip_luma
+from vshavc.vsslib.vsutils import frame_to_image, image_to_frame, frame_to_np_array, np_array_to_frame
+from vshavc.vsslib.vsutils import debug_ModifyFrame
+from vshavc.colormnet import vs_colormnet_remote, vs_colormnet_local
+from vshavc.colormnet2 import vs_colormnet2_remote, vs_colormnet2_local
+from vshavc.deepex import deepex_colorizer, ModelColorizer
+from vshavc.colorization import ModelColorization
+from vshavc.havc_utils import rgb_denoise, vs_auto_levels
 
-from vsdeoldify.vsslib.constants import *
+from vshavc.vsslib.constants import *
 
 def vs_colormnet(clip: vs.VideoNode, clip_ref: vs.VideoNode, clip_sc: vs.VideoNode, image_size: int = -1,
                  enable_resize: bool = False, frame_propagate: bool = True, render_vivid: bool = True,
@@ -268,7 +268,7 @@ def vs_deoldify(clip: vs.VideoNode, method: int = 2, model: int = 0, render_fact
     :param model:         DeOldify model (0 = Video, 1 = Stable, 2 = Artistic).
     :param render_factor: Render factor controlling inference resolution [10, 44].
     :param scenechange:   Ignored; always False for this function.
-    :param package_dir:   Path to the vsdeoldify package directory (for model weights).
+    :param package_dir:   Path to the vshavc package directory (for model weights).
     :return:              Colourised RGB24 clip.
     """
     return vs_sc_deoldify(clip, method, model, render_factor, scenechange=False, package_dir=package_dir)
@@ -287,7 +287,7 @@ def vs_sc_deoldify(clip: vs.VideoNode, method: int = 2, model: int = 0, render_f
     :param model:         0 = ColorizeVideo_gen, 1 = ColorizeStable_gen, 2 = ColorizeArtistic_gen.
     :param render_factor: Render factor [10, 44]. Default 24.
     :param scenechange:   If True, process only scene-change frames.
-    :param package_dir:   Path to the vsdeoldify package directory (for model weights).
+    :param package_dir:   Path to the vshavc package directory (for model weights).
     :return:              Colourised RGB24 clip, or None when method==1.
     """
     if method == 1:

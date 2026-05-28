@@ -24,14 +24,14 @@ from PIL import Image
 import numpy as np
 import math
 
-from vsdeoldify.colormnet.colormnet_utils import *
+from vshavc.colormnet.colormnet_utils import *
 
-from vsdeoldify.colormnet.dataset.range_transform import im_normalization, im_rgb2lab_normalization, ToTensor, RGB2Lab
+from vshavc.colormnet.dataset.range_transform import im_normalization, im_rgb2lab_normalization, ToTensor, RGB2Lab
 
-from vsdeoldify.colormnet.model.network import ColorMNet
-from vsdeoldify.colormnet.inference.inference_core import InferenceCore
-from vsdeoldify.vsslib.constants import *
-from vsdeoldify.vsslib.vsutils import *
+from vshavc.colormnet.model.network import ColorMNet
+from vshavc.colormnet.inference.inference_core import InferenceCore
+from vshavc.vsslib.constants import *
+from vshavc.vsslib.vsutils import *
 
 import warnings
 

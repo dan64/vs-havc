@@ -15,8 +15,8 @@ import vapoursynth as vs
 import math
 from typing import Optional
 
-from vsdeoldify.vsslib.constants import DEF_MAX_RESIZE
-#from vsdeoldify.vsslib.vsscdect import CopySCDetect
+from vshavc.vsslib.constants import DEF_MAX_RESIZE
+#from vshavc.vsslib.vsscdect import CopySCDetect
 
 """
 ------------------------------------------------------------------------------- 

@@ -16,10 +16,10 @@ import numpy as np
 import cv2
 from PIL import Image
 from functools import partial
-from vsdeoldify.vsslib.imfilters import get_image_luma, image_luma_blend
-from vsdeoldify.vsslib.vsplugins import load_Retinex_plugin
-from vsdeoldify.vsslib.vsutils import frame_to_image, image_to_frame
-from vsdeoldify.vsslib.vsfilters import vs_recover_clip_luma
+from vshavc.vsslib.imfilters import get_image_luma, image_luma_blend
+from vshavc.vsslib.vsplugins import load_Retinex_plugin
+from vshavc.vsslib.vsutils import frame_to_image, image_to_frame
+from vshavc.vsslib.vsfilters import vs_recover_clip_luma
 
 
 def vs_retinex(clip: vs.VideoNode, luma_dark: float = 0.20, luma_bright: float = 0.80,

@@ -17,12 +17,12 @@ import cv2
 from functools import partial
 from skimage.metrics import structural_similarity
 
-import vsdeoldify.vsslib.vsutils as vsutil
-import vsdeoldify.vsslib.vsplugins as vsplugins
+import vshavc.vsslib.vsutils as vsutil
+import vshavc.vsslib.vsplugins as vsplugins
 
-from vsdeoldify.vsslib.constants import *
-from vsdeoldify.vsslib.vsplugins import load_MVTool_plugin
-from vsdeoldify.vsslib.vsresize import resize_min_HW
+from vshavc.vsslib.constants import *
+from vshavc.vsslib.vsplugins import load_MVTool_plugin
+from vshavc.vsslib.vsresize import resize_min_HW
 
 """
 ------------------------------------------------------------------------------- 

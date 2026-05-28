@@ -10,11 +10,11 @@ Description:
 -------------------------------------------------------------------------------
 Inference Core for CMNET2
 """
-from vsdeoldify.colormnet2.inference.memory_manager import MemoryManager
-from vsdeoldify.colormnet2.model.network import ColorMNet
-from vsdeoldify.colormnet2.model.aggregate import aggregate
+from vshavc.colormnet2.inference.memory_manager import MemoryManager
+from vshavc.colormnet2.model.network import ColorMNet
+from vshavc.colormnet2.model.aggregate import aggregate
 
-from vsdeoldify.colormnet2.util.tensor_util import pad_divide_by, unpad
+from vshavc.colormnet2.util.tensor_util import pad_divide_by, unpad
 import torch
 
 

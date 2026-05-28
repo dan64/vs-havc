@@ -13,9 +13,9 @@ Library of filter functions working on images.
 import numpy as np
 import cv2
 from PIL import Image, ImageMath, ImageEnhance
-from vsdeoldify.vsslib.nputils import np_rgb_to_gray, np_image_mask_merge, w_np_rgb_to_gray, w_np_image_mask_merge
-from vsdeoldify.vsslib.nputils import  array_clip, np_image_gamma_contrast, np_hue_add
-from vsdeoldify.vsslib.restcolor import np_adjust_chroma2, np_image_chroma_tweak
+from vshavc.vsslib.nputils import np_rgb_to_gray, np_image_mask_merge, w_np_rgb_to_gray, w_np_image_mask_merge
+from vshavc.vsslib.nputils import  array_clip, np_image_gamma_contrast, np_hue_add
+from vshavc.vsslib.restcolor import np_adjust_chroma2, np_image_chroma_tweak
 
 """
 ------------------------------------------------------------------------------- 

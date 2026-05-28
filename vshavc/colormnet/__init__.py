@@ -26,13 +26,13 @@ from __future__ import annotations, print_function
 #from functools import partial
 #import vapoursynth as vs
 
-from vsdeoldify.colormnet.colormnet_render import ColorMNetRender
-from vsdeoldify.colormnet.colormnet_utils import *
-from vsdeoldify.colormnet.colormnet_server import ColorMNetServer
-from vsdeoldify.colormnet.colormnet_client import ColorMNetClient
-from vsdeoldify.vsslib.imfilters import image_weighted_merge
-from vsdeoldify.vsslib.constants import *
-from vsdeoldify.vsslib.vsutils import MessageType, HAVC_LogMessage, debug_ModifyFrame
+from vshavc.colormnet.colormnet_render import ColorMNetRender
+from vshavc.colormnet.colormnet_utils import *
+from vshavc.colormnet.colormnet_server import ColorMNetServer
+from vshavc.colormnet.colormnet_client import ColorMNetClient
+from vshavc.vsslib.imfilters import image_weighted_merge
+from vshavc.vsslib.constants import *
+from vshavc.vsslib.vsutils import MessageType, HAVC_LogMessage, debug_ModifyFrame
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"

@@ -11,19 +11,19 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from vsdeoldify.colormnet2.model.network import ColorMNet
+from vshavc.colormnet2.model.network import ColorMNet
 
-from vsdeoldify.colormnet2.model.losses import LossComputer
-from vsdeoldify.colormnet2.util.log_integrator import Integrator
-from vsdeoldify.colormnet2.util.image_saver import pool_pairs_221128_TransColorization
+from vshavc.colormnet2.model.losses import LossComputer
+from vshavc.colormnet2.util.log_integrator import Integrator
+from vshavc.colormnet2.util.image_saver import pool_pairs_221128_TransColorization
 
 # val
 from torch.utils.data import DataLoader
-from vsdeoldify.colormnet2.inference.data.mask_mapper import MaskMapper
-from vsdeoldify.colormnet2.inference.inference_core import InferenceCore
+from vshavc.colormnet2.inference.data.mask_mapper import MaskMapper
+from vshavc.colormnet2.inference.inference_core import InferenceCore
 import torch.nn.functional as F
 from PIL import Image
-from vsdeoldify.colormnet2.util.transforms import lab2rgb_transform_PIL, calculate_psnr
+from vshavc.colormnet2.util.transforms import lab2rgb_transform_PIL, calculate_psnr
 
 
 class ColorMNetTrainer:

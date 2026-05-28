@@ -1,5 +1,5 @@
 import torchvision.transforms as transforms
-import vsdeoldify.colormnet2.util.functional as F
+import vshavc.colormnet2.util.functional as F
 import numpy as np
 from skimage import color
 

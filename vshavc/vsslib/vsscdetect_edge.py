@@ -20,13 +20,13 @@ import numpy as np
 import cv2
 from functools import partial
 from skimage.metrics import structural_similarity
-import vsdeoldify.vsslib.vsplugins as vsplugins
-from vsdeoldify.vsslib.constants import *
-import vsdeoldify.vsslib.vsutils as vsutil
-from vsdeoldify.vsslib.constants import DEF_THT_WHITE, DEF_THT_BLACK
-from vsdeoldify.vsslib.vsplugins import load_Retinex_plugin, load_TCanny_plugin, load_Akarin_plugin, load_SCDetect_plugin
-from vsdeoldify.vsslib.vsresize import resize_min_HW
-from vsdeoldify.vsslib.vsutils import frame_to_image
+import vshavc.vsslib.vsplugins as vsplugins
+from vshavc.vsslib.constants import *
+import vshavc.vsslib.vsutils as vsutil
+from vshavc.vsslib.constants import DEF_THT_WHITE, DEF_THT_BLACK
+from vshavc.vsslib.vsplugins import load_Retinex_plugin, load_TCanny_plugin, load_Akarin_plugin, load_SCDetect_plugin
+from vshavc.vsslib.vsresize import resize_min_HW
+from vshavc.vsslib.vsutils import frame_to_image
 
 
 def SceneDetectEdges(clip: vs.VideoNode, threshold: float = 0.07, frequency: int = 0, ssim_threshold: float = 0.0,

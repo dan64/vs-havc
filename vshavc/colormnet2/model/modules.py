@@ -14,9 +14,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from vsdeoldify.colormnet2.model.group_modules import *
-from vsdeoldify.colormnet2.model import resnet
-from vsdeoldify.colormnet2.model.cbam import CBAM
+from vshavc.colormnet2.model.group_modules import *
+from vshavc.colormnet2.model import resnet
+from vshavc.colormnet2.model.cbam import CBAM
 
 
 class FeatureFusionBlock(nn.Module):

@@ -22,13 +22,13 @@ from xmlrpc.server import SimpleXMLRPCServer
 from xmlrpc.server import SimpleXMLRPCRequestHandler
 import tempfile
 import datetime
-from vsdeoldify.colormnet2 import ColorMNetRender2
-from vsdeoldify.colormnet2.colormnet2_utils import byte_array_to_image, image_to_byte_array
+from vshavc.colormnet2 import ColorMNetRender2
+from vshavc.colormnet2.colormnet2_utils import byte_array_to_image, image_to_byte_array
 
 # weights are not duplicated
 package_dir = os.path.dirname(os.path.realpath(__file__)).replace("colormnet2", "colormnet")
 
-from vsdeoldify.colormnet2.colormnet2_logbuffer import ServerLogBuffer, log_warning, log_info, log_debug
+from vshavc.colormnet2.colormnet2_logbuffer import ServerLogBuffer, log_warning, log_info, log_debug
 
 class ColorMNetRPCServer2:
     server_address: str = None

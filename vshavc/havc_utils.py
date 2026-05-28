@@ -21,16 +21,16 @@ import numpy as np
 from typing import NamedTuple
 
 
-from vsdeoldify.vsslib.vsplugins import load_LSMASHSource_plugin, vs_timecube
-import vsdeoldify.vsslib.restcolor as restcolor
-from vsdeoldify.vsslib.imfilters import get_image_luma, image_luma_blend
-from vsdeoldify.vsslib.vsretinex import vs_retinex
+from vshavc.vsslib.vsplugins import load_LSMASHSource_plugin, vs_timecube
+import vshavc.vsslib.restcolor as restcolor
+from vshavc.vsslib.imfilters import get_image_luma, image_luma_blend
+from vshavc.vsslib.vsretinex import vs_retinex
 
-import vsdeoldify.vsslib.vsresize as vsresize
+import vshavc.vsslib.vsresize as vsresize
 
-from vsdeoldify.vsslib.constants import *
+from vshavc.vsslib.constants import *
 
-from vsdeoldify.vsslib.vsutils import HAVC_LogMessage, MessageType, frame_to_image, image_to_frame
+from vshavc.vsslib.vsutils import HAVC_LogMessage, MessageType, frame_to_image, image_to_frame
 
 
 # Using NamedTuple for better compatibility with VapourSynth's typical usage patterns

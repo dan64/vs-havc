@@ -13,11 +13,11 @@ Memory Manager for CMNET2
 import torch
 #import warnings
 import math
-from vsdeoldify.colormnet2.inference.kv_memory_store import KeyValueMemoryStore
-from vsdeoldify.colormnet2.model.memory_util import *
+from vshavc.colormnet2.inference.kv_memory_store import KeyValueMemoryStore
+from vshavc.colormnet2.model.memory_util import *
 import os, tempfile, datetime
 
-from vsdeoldify.colormnet2.colormnet2_logbuffer import log_warning as _buf_warning
+from vshavc.colormnet2.colormnet2_logbuffer import log_warning as _buf_warning
 
 class MemoryManager:
     """

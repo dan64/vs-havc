@@ -8,9 +8,9 @@ from torchvision.transforms import InterpolationMode
 from PIL import Image
 import numpy as np
 
-from vsdeoldify.colormnet2.dataset.range_transform import im_normalization, im_mean
-#from vsdeoldify.colormnet2.dataset.tps import random_tps_warp
-from vsdeoldify.colormnet2.dataset.reseed import reseed
+from vshavc.colormnet2.dataset.range_transform import im_normalization, im_mean
+#from vshavc.colormnet2.dataset.tps import random_tps_warp
+from vshavc.colormnet2.dataset.reseed import reseed
 
 
 class StaticTransformDataset(Dataset):

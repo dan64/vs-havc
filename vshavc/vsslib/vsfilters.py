@@ -15,13 +15,13 @@ import os
 import math
 from functools import partial
 
-from vsdeoldify.vsslib.imfilters import _color_temporal_stabilizer, _chroma_temporal_limiter, get_image_luma
-from vsdeoldify.vsslib.imfilters import image_chroma_tweak, image_luma_merge, w_image_luma_merge, image_tweak
-from vsdeoldify.vsslib.imfilters import luma_adjusted_levels, chroma_post_process
-from vsdeoldify.vsslib.restcolor import restore_color, restore_color_gradient, adjust_hue_range
-from vsdeoldify.vsslib.vsutils import frame_to_image, image_to_frame
+from vshavc.vsslib.imfilters import _color_temporal_stabilizer, _chroma_temporal_limiter, get_image_luma
+from vshavc.vsslib.imfilters import image_chroma_tweak, image_luma_merge, w_image_luma_merge, image_tweak
+from vshavc.vsslib.imfilters import luma_adjusted_levels, chroma_post_process
+from vshavc.vsslib.restcolor import restore_color, restore_color_gradient, adjust_hue_range
+from vshavc.vsslib.vsutils import frame_to_image, image_to_frame
 
-from vsdeoldify.vsslib.constants import *
+from vshavc.vsslib.constants import *
 
 """
 ------------------------------------------------------------------------------- 

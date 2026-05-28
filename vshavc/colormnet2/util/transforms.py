@@ -1,5 +1,5 @@
 
-from vsdeoldify.colormnet2.dataset.range_transform import inv_im_trans, inv_lll2rgb_trans
+from vshavc.colormnet2.dataset.range_transform import inv_im_trans, inv_lll2rgb_trans
 from skimage import color, io
 import cv2
 import numpy as np

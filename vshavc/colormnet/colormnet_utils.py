@@ -16,12 +16,12 @@ import vapoursynth as vs
 import numpy as np
 from PIL import Image
 import io
-from vsdeoldify.colormnet.dataset.range_transform import inv_im_trans, inv_lll2rgb_trans
+from vshavc.colormnet.dataset.range_transform import inv_im_trans, inv_lll2rgb_trans
 from skimage import color
 import cv2
 import math
-from vsdeoldify.vsslib.constants import *
-from vsdeoldify.vsslib.vsutils import *
+from vshavc.vsslib.constants import *
+from vshavc.vsslib.vsutils import *
 
 
 class RefImageReader:

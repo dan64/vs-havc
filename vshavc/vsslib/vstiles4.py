@@ -21,9 +21,9 @@ It will be used the akarin plugin to generate position-based blend masks for sea
 from dataclasses import dataclass
 from typing import List, Optional
 import vapoursynth as vs
-from vsdeoldify.vsslib import vsresize
-from vsdeoldify.vsslib.vsplugins import load_Akarin_plugin
-from vsdeoldify.vsslib.vsutils import frame_to_image
+from vshavc.vsslib import vsresize
+from vshavc.vsslib.vsplugins import load_Akarin_plugin
+from vshavc.vsslib.vsutils import frame_to_image
 
 @dataclass
 class ClipTiles:

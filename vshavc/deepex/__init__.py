@@ -23,12 +23,12 @@ import torchvision.transforms as transform_lib
 from PIL import Image
 
 import vapoursynth as vs
-import vsdeoldify.deepex.lib.TestTransforms as transforms
-from vsdeoldify.deepex.models.ColorVidNet import ColorVidNet
-from vsdeoldify.deepex.models.FrameColor import frame_colorization
-from vsdeoldify.deepex.models.NonlocalNet import VGG19_pytorch, WarpNet
-from vsdeoldify.deepex.utils.util import (batch_lab2rgb_transpose_mc, tensor_lab2rgb, uncenter_l)
-from vsdeoldify.deepex.utils.util_distortion import CenterPad, Normalize, RGB2Lab, ToTensor
+import vshavc.deepex.lib.TestTransforms as transforms
+from vshavc.deepex.models.ColorVidNet import ColorVidNet
+from vshavc.deepex.models.FrameColor import frame_colorization
+from vshavc.deepex.models.NonlocalNet import VGG19_pytorch, WarpNet
+from vshavc.deepex.utils.util import (batch_lab2rgb_transpose_mc, tensor_lab2rgb, uncenter_l)
+from vshavc.deepex.utils.util_distortion import CenterPad, Normalize, RGB2Lab, ToTensor
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
