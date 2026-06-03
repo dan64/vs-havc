@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-09-27
 version:
 LastEditors: Dan64
-LastEditTime: 2026-04-21
+LastEditTime: 2026-05-21
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
@@ -61,6 +61,11 @@ class ColorMNetRPCServer:
         def initialize(self, image_size: int = -1, vid_length: int = 1000, enable_resize: bool = False,
                        encode_mode: int = 0, propagate: bool = False, max_memory_frames: int = None,
                        reset_on_ref_update: bool = True):
+            # Force a fresh render on reinitialization (e.g. VSEdit loop).
+            # The render is a singleton and would otherwise keep stale state.
+            if self.render is not None:
+                log_warning("ColorMNet Render state reset")
+                self.render.reset_state()
             self.render = ColorMNetRender(image_size, vid_length, enable_resize, encode_mode, propagate,
                                           max_memory_frames, reset_on_ref_update=reset_on_ref_update,
                                           project_dir=package_dir)
@@ -83,14 +88,18 @@ class ColorMNetRPCServer:
             return self.render is not None
 
         def ColorizeImage(self, img_byte_array: bytes, ti: int = None):
-            img = byte_array_to_image(img_byte_array)
-            if self.render is not None:
-                img_colored = self.render.colorize_frame(ti, img)
-                img_byte_array = image_to_byte_array(img_colored)
-                return img_byte_array
-            else:
-                log_warning("ColorMNet Render is not initialized")
-                return img_byte_array
+            try:
+                img = byte_array_to_image(img_byte_array)
+                if self.render is not None:
+                    img_colored = self.render.colorize_frame(ti, img)
+                    img_byte_array = image_to_byte_array(img_colored)
+                    return img_byte_array
+                else:
+                    log_warning(f"ColorMNet Render is not initialized, return original frame ti={ti}")
+                    return img_byte_array
+            except Exception as e:
+                log_warning(f"ColorizeImage failed at ti={ti}: {type(e).__name__}: {e}")
+                raise
 
         def GetFrameCount(self) -> int:
             if self.render is not None:

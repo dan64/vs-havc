@@ -1,5 +1,7 @@
 # Hybrid Automatic Video Colorizer (aka HAVC)
 
+**Version 5.8.5**
+
 A Deep Learning based [VapourSynth](https://www.vapoursynth.com/) filter for colorizing and restoring old images and video, based on the following projects: [DeOldify](https://github.com/jantic/DeOldify)
 ,  [DDColor](https://github.com/HolyWu/vs-ddcolor), [Colorization](https://github.com/richzhang/colorization), [Deep Exemplar based Video Colorization](https://github.com/zhangmozhe/Deep-Exemplar-based-Video-Colorization), [DeepRemaster](https://github.com/satoshiiizuka/siggraphasia2019_remastering), [ColorMNet](https://github.com/yyang181/colormnet) and [CMNET2](https://github.com/dan64/cmnet2). The project  [Colorization](https://github.com/richzhang/colorization) includes 2 models: _Real-Time User-Guided Image Colorization with Learned Deep Priors_ (Zhang, 2017) and _Colorful Image Colorization_ (Zhang, 2016). These 2 models has been added as alternative models (named: _siggraph17_, _eccv16_) to DDColor.
 
@@ -11,9 +13,38 @@ The filter (_HAVC_ in short) can be considered the _Swiss Army knife_ for colori
 
 _DeepEx_, _DeepRemaster_, _ColorMNet_ and _[CMNET2](https://github.com/dan64/cmnet2)_ are exemplar-based video colorization models, which allow to colorize a movie starting from one or more external-colored reference images. They allow to colorize a Video in sequence based on the colorization history, enforcing its coherency by using a temporal consistency loss.
 
-## What's New in 5.8.0 — CMNET2
+## What's New in 5.8.5 : CMNET2-DiT
 
-The major addition of HAVC 5.8.0 is **[CMNET2](https://github.com/dan64/cmnet2)**, a new exemplar-based video colorization model developed as an evolution of ColorMNet. **CMNET2 is now the default exemplar model** in HAVC and provides significant improvements in color consistency and quality, especially on long videos with many reference frames. **[CMNET2](https://github.com/dan64/cmnet2)** was developed by me as an extension of ColorMNet in order to reduce the main defects of ColorNet: faded and/or incorrect colors for frames distant from the main reference frame (solved by the perm_mem), temporal inconsistency of colors (solved by the sliding perm_mem window). 
+The main addition of HAVC 5.8.5 is `HAVC_cmnet2dit()`, a self-contained colorization filter that combines the **CMNET2** propagation model with a **DiT-based colorizer** (Nunchaku/Qwen-IE quantized, accessed via RPC). Unlike `HAVC_cmnet2()`, this function does not require a pre-colored reference clip : scene-change frames are extracted from the B&W input itself, colorized by the DiT engine in pairs, and loaded into the CMNET2 permanent-memory window as colored anchors.
+
+For this filter has been developed in Hybrid a dedicated configuration page (named **CMNetDiT**) as shown in the following image:
+
+![Model_cmnet2dit.jpg](https://github.com/dan64/vs-havc/blob/main/hybrid_setup/Model_cmnet2dit.jpg)
+
+This means that it is possible colorize with a DiT model a B&W video with a single function call, with no external reference images needed.
+
+Requirements: an external [DiTServerRPC](https://github.com/dan64/DiTServerRPC) server must be installed and running before the VapourSynth script is executed. A CUDA GPU with sufficient VRAM is required (**fp4** for RTX 50-Series, **int4** for RTX 30/40-Series).
+
+See the dedicated section below and the [full documentation](documentation/HAVC_cmnet2dit.md) for details.
+
+---
+
+Additionally, a new `retry_model` parameter has been added to `HAVC_cmnet2()`,
+`HAVC_deepex()`, and `HAVC_restore_video()`. It controls which colorization
+engine is used by the CMNET2 retry path when a reference frame is missing:
+
+| Value | Engine                            | Requires                               |
+| ----- | --------------------------------- | -------------------------------------- |
+| `0`   | HAVC (60% DeOldify + 40% DDColor) | Nothing extra (default)                |
+| `1`   | DiT fp4                           | DiTServerRPC running, RTX 50-Series    |
+| `2`   | DiT int4                          | DiTServerRPC running, RTX 30/40-Series |
+
+If the selected DiT server is not reachable, the engine automatically falls back
+to model `0` (HAVC).
+
+## What's New in 5.8.0 : CMNET2
+
+The major addition of HAVC 5.8.0 is **[CMNET2](https://github.com/dan64/cmnet2)**, a new exemplar-based video colorization model developed as an evolution of ColorMNet. CMNET2 is now the default exemplar model** in HAVC and provides significant improvements in color consistency and quality, especially on long videos with many reference frames. [CMNET2](https://github.com/dan64/cmnet2) was developed by me as an extension of ColorMNet in order to reduce the main defects of ColorNet: faded and/or incorrect colors for frames distant from the main reference frame (solved by the perm_mem), temporal inconsistency of colors (solved by the sliding perm_mem window). 
 
 The key innovations of CMNET2 over ColorMNet are:
 
@@ -101,7 +132,6 @@ The archive  **colorization_checkpoint.zip** have to be unziped in: .\Lib\site-p
 
 ```python
 # loading plugins
-core.std.LoadPlugin(path="MiscFilters.dll")
 import vshavc as havc
 
 # changing range from limited to full range for HAVC
@@ -278,7 +308,7 @@ In Hybrid the _Exemplar Models_ have their own panel, as shown in the following 
 
 The available exemplar models are selected via the field **Model** with the following values:
 
-- 0 : **CMNET2** (default) — new in 5.8.0, recommended
+- 0 : **CMNET2** (default) : new in 5.8.0, recommended
 - 1 : **Deep-Exemplar**
 - 2 : **DeepRemaster**
 - 3 : **ColorMNet** (original)
@@ -290,7 +320,7 @@ For CMNET2 and ColorMNet there are 2 implementations defined, by the field **Mod
 
 The field **Preset** controls the render method and speed, allowed values are:
 
-- 'Auto' (default — automatically assigns the optimal render size)
+- 'Auto' (default : automatically assigns the optimal render size)
 - 'Fast' (faster but colors are more washed out)
 - 'Medium' (colors are a little washed out)
 - 'Slow' (slower but colors are a little more vivid)
@@ -340,6 +370,129 @@ Suggested values for CMNET2:
 - if = 0 (default), the window size is automatically set to 50
 
 For ColorMNet and DeepRemaster, **DeepExMaxMemFrames** keeps its previous meaning (max number of encoded frames / max number of reference frames in memory). Note that the suggested ranges have been revised in 5.8.0; please refer to the docstring of `HAVC_main()` and to the [User Guide](https://github.com/dan64/vs-havc/blob/main/documentation/HAVC%20User%20Guide.pdf) for the up-to-date values.
+
+### CMNET2 Retry Model
+
+When `retry_threshold > 0`, CMNET2 may request a fresh colorized reference frame
+for frames with insufficient permanent-memory coverage. The `retry_model`
+parameter selects the engine used for this on-the-fly colorization:
+
+| Value | Engine                    | Requires                               |
+| ----- | ------------------------- | -------------------------------------- |
+| `0`   | HAVC (DeOldify + DDColor) | Nothing extra (default)                |
+| `1`   | DiT fp4                   | DiTServerRPC running, RTX 50-Series    |
+| `2`   | DiT int4                  | DiTServerRPC running, RTX 30/40-Series |
+
+If the selected DiT server is not reachable, the engine automatically falls back
+to model `0` (HAVC). See [HAVC_cmnet2dit.md](documentation/HAVC_cmnet2dit.md) for
+details on DiT setup.
+
+## HAVC_cmnet2dit : Self-contained DiT + CMNET2 Colorization
+
+> **Full documentation:** [documentation/HAVC_cmnet2dit.md](documentation/HAVC_cmnet2dit.md) —
+> detailed guide with advanced usage examples, model configuration, and
+> troubleshooting tips.
+
+`HAVC_cmnet2dit()` integrates a DiT-based colorization model with CMNET2,
+making the colorization pipeline self-contained : no pre-colored reference
+clip is needed.
+
+### Architecture
+
+```
+B&W input clip
+     |
+     +-- SceneDetectEdges() --> B&W scene-change frames (ref frames)
+     |                                    |
+     |                     HAVCditEngine.colorize_image_pair()
+     |                                    |
+     |                     Colored ref frames -> CMNET2 perm_mem window
+     |                                    |
+     +------------> CMNET2 propagation ----> Colored output clip
+```
+
+Reference frames are colorized **in pairs** by the DiT model (Nunchaku-qwen
+with fp4/int4 quantization), halving the number of DiT forward passes. A
+`colorize_image()` fallback handles any odd leftover.
+
+### Requirements
+
+- **[DiTServerRPC](https://github.com/dan64/DiTServerRPC)** : external RPC
+  server that loads the DiT model and exposes the colorization API. Must be
+  installed and running before the VapourSynth script.
+- CUDA GPU with sufficient VRAM (RTX 50-Series: fp4, RTX 30/40-Series: int4).
+- CMNET2 model weights accessible at the package model directory.
+
+### Basic Usage
+
+```python
+import vshavc as havc
+
+clip_bw = havc.HAVC_read_video(source="video_bw.mp4")
+clip = havc.HAVC_cmnet2dit(clip_bw)
+```
+
+### Key Parameters
+
+| Parameter           | Default     | Description                                                      |
+| ------------------- | ----------- | ---------------------------------------------------------------- |
+| `render_speed`      | `auto`      | CMNET2 render resolution: Auto / Fast / Medium / Slow / Slower   |
+| `render_vivid`      | `False`     | +15% saturation boost after colorization                         |
+| `sc_thresh`         | `0.035`     | Scene edges-detection threshold [0.01, 0.15]                     |
+| `sc_tht_ssim`       | `0.80`      | SSIM threshold to filter similar scene-change frames             |
+| `sc_min_int`        | `25`        | Minimum frame distance between scene changes                     |
+| `sc_tht_offset`     | `2`         | Frame offset for scene-change comparison [1-25]                  |
+| `sc_min_freq`       | `0`         | Force at least 1 ref frame every N frames [0-1000]               |
+| `encode_mode`       | `0`         | 0=remote CMNET2 backend (recommended), 1=local                   |
+| `max_memory_frames` | `20`        | Sliding permanent-memory window size (rounded to even)           |
+| `dit_engine_params` | `None`      | DiT model configuration dict (see below)                         |
+| `torch_dir`         | `model_dir` | Torch hub dir for CMNET2 model weights                           |
+| `retry_threshold`   | `0.0`       | Threshold for retry with additional ref frames [0-1], 0=disabled |
+| `retry_model`       | `1`         | Model for retry: 0=HAVC, 1=DiT fp4, 2=DiT int4                   |
+
+### `dit_engine_params` Keys
+
+| Key                     | Default                    | Description                                     |
+| ----------------------- | -------------------------- | ----------------------------------------------- |
+| `host`                  | `127.0.0.1`                | DiTServerRPC address                            |
+| `port`                  | `8765`                     | DiTServerRPC port                               |
+| `model_inference_steps` | `4`                        | Steps used to select the model file to download |
+| `cache_dir`             | `""`                       | HuggingFace cache directory                     |
+| `model_name`            | `nunchaku-qwen`            | Nunchaku model name                             |
+| `model_precision`       | `fp4`                      | `fp4` (RTX 50xx) or `int4` (RTX 30/40xx)        |
+| `model_rank`            | `32`                       | SVD rank: `32` or `128`                         |
+| `full_model_path`       | `""`                       | Absolute path to a local .safetensors file      |
+| `prompt`                | `"Colorize this image..."` | Text prompt guiding colorization style          |
+| `steps`                 | `2`                        | DiT inference steps per image                   |
+| `img_size`              | `0`                        | Max long-side in pixels (0=original size)       |
+
+> **Note:** `retry_model=1` (default for this function) selects DiT fp4, matching
+> `model_precision="fp4"` in `dit_engine_params`. Use `retry_model=2` for int4
+> or `retry_model=0` for HAVC fallback.
+> 
+> If `retry_model` and `dit_engine_params["model_precision"]` are in conflict
+> (e.g. `retry_model=1` but `model_precision="int4"`), the value in
+> `dit_engine_params` takes priority : the DiT server singleton is initialized
+> from the dict first, and `retry_model` cannot override an already-loaded model.
+
+### Performance
+
+Typical ~4 fps on RTX 50-Series with default settings. When
+`host="127.0.0.1"`, image transfer uses shared memory (zero-copy, ~23%
+faster than remote hosts). `encode_mode=0` (remote CMNET2) is recommended
+to avoid GPU memory contention between DiT and CMNET2.
+
+### Differences from `HAVC_cmnet2()`
+
+| Feature                            | `HAVC_cmnet2`                            | `HAVC_cmnet2dit`                      |
+| ---------------------------------- | ---------------------------------------- | ------------------------------------- |
+| Reference frames                   | Pre-colored (caller provides `clip_ref`) | B&W, derived from input clip          |
+| Reference colorization             | n/a                                      | `HAVCditEngine.colorize_image_pair()` |
+| `clip_ref` parameter               | Required                                 | Not exposed                           |
+| `sc_framedir`                      | Supported                                | Not supported                         |
+| `colormap`/`dark`/`smooth` filters | Supported                                | Not supported                         |
+| `ref_merge`                        | Supported                                | Not supported                         |
+| Window size                        | Any positive integer                     | Always even (pair-wise scheme)        |
 
 ## Coloring using Hybrid
 

@@ -4,12 +4,14 @@ Author: Dan64
 Date: 2024-11-20
 version:
 LastEditors: Dan64
-LastEditTime: 2026-04-20
+LastEditTime: 2026-04-24
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
 Constants for vs-havc functions.
 """
+DEF_CONNECT_TIMEOUT: int = 5
+DEF_CALL_TIMEOUT: int = 180
 DEF_LEVEL_NONE: int = 0
 DEF_LEVEL_INFO: int = 1
 DEF_LEVEL_DEBUG: int = 2
@@ -74,6 +76,8 @@ DEF_NUM_XRF_FRAMES: int = 20         # default number of reference frames to loa
 DEF_MIN_XRF_FRAMES: int = 2          # MIN number of reference frames to load at start for colormnet
 DEF_FUTURE_FRAME_WEIGHT: float = 0.5
 DEF_XRF_WINDOW_SIZE: int = 20        # default window_size for cmnet2 (replaces max_memory_frames semantics)
+DEF_XRF_MAX_WINDOW_SIZE: int = 40    # max window_size for initial loading in cmnet2
+DEF_XRF_HALF_WINDOW_SIZE: int = 20
 DEF_XRF_SLIDE_PERCENT: float = 0.2   # SLIDE_STEP = max(1, round(window_size * DEF_XRF_SLIDE_PERCENT + 0.5))
 DEF_BATCH_SIZE: int = 2
 DEF_VIVID_HUE_LOW: float = 3.0

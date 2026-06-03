@@ -1,10 +1,10 @@
 """
 -------------------------------------------------------------------------------
 Author: Dan64
-Date: 2024-09-14
+Date: 2025-09-28
 version:
 LastEditors: Dan64
-LastEditTime: 2026-05-04
+LastEditTime: 2026-05-24
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
@@ -31,9 +31,9 @@ from vshavc.colormnet2.dataset.range_transform import im_normalization, im_rgb2l
 from vshavc.colormnet2.model.network import ColorMNet
 from vshavc.colormnet2.inference.inference_core import InferenceCore
 from vshavc.colormnet2.util.transforms import lab2rgb_transform_PIL
-from vshavc.vsslib.mcomb import HAVCimageEngine
 from vshavc.vsslib.imfilters import image_weighted_merge
 from vshavc.colormnet2.colormnet2_logbuffer import log_warning as _buf_warning, log_debug as _buf_debug
+from vshavc.vsslib.vsimage_engine import HAVCimageEngine
 from vshavc.vsslib.vsutils import MessageType, HAVC_LogMessage
 
 import warnings
@@ -77,7 +77,7 @@ class ColorMNetRender2:
                  encode_mode: int = None, propagate: bool = False, max_memory_frames: int = None,
                  reset_on_ref_update: bool = True, top_k: int = 30, mem_every: int = 5,
                  retry_mmsp_threshold: float = -1.0, retry_perm_share_threshold: float = 0.25,
-                 project_dir: str = None):
+                 retry_model: int = 0, project_dir: str = None):
 
         self.reset_on_ref_update = reset_on_ref_update  # deprecated with XMem2
         self.top_k = top_k
@@ -106,6 +106,7 @@ class ColorMNetRender2:
         # can pick them up. See reference_frame_missing() for usage.
         self._retry_mmsp_threshold = retry_mmsp_threshold
         self._retry_perm_share_threshold = retry_perm_share_threshold
+        self._retry_model = retry_model
 
         # Lazy init: havc_engine is created on first colorize_frame_with_retry()
         # call to avoid loading DeOldify+DDColor for sessions that don't enable
@@ -162,7 +163,7 @@ class ColorMNetRender2:
         self.config['enable_retry'] = self._retry_perm_share_threshold > 0
 
         if self.config['enable_retry']:
-            _buf_warning(f"ColorMNetRender2(): enabled missing Reference colorization with threshold={self._retry_perm_share_threshold}")
+            _buf_warning(f"ColorMNetRender2(): enabled missing Reference colorization with threshold={self._retry_perm_share_threshold} and color_model={self._retry_model}")
 
         if image_size < 0:
             self.im_transform = transforms.Compose([
@@ -380,18 +381,22 @@ class ColorMNetRender2:
                 self._havc_engine = HAVCimageEngine(
                     render_factor=render_factor,
                     merge_weight=merge_engine_weight,
+                    color_model=self._retry_model,
                 )
-            if debug:
-                mmsp, perm_share = self.get_last_match_metrics()
-                _buf_warning(f"Frame {ti} retry: injected merged ref (mmsp={mmsp:.3f}, perm_share={perm_share:.3f})")
-            # Generate a clean reference for this frame.
-            img_ref = self._havc_engine.colorize_merged(frame_i)
-            # Blend with the bad first-pass output for smooth scene transitions.
-            img_merged = image_weighted_merge(img_color, img_ref, weight=retry_blend_weight)
-            # Inject as new perm_mem reference and re-colorize.
-            self.set_ref_frame(img_merged, frame_propagate=False)
-            img_color = self.colorize_frame(ti, frame_i)
-
+            try:
+                if debug:
+                    mmsp, perm_share = self.get_last_match_metrics()
+                    _buf_warning(f"Frame {ti} retry: injected merged ref (mmsp={mmsp:.3f}, perm_share={perm_share:.3f})")
+                # Generate a clean reference for this frame.
+                img_ref = self._havc_engine.colorize_merged(frame_i)
+                # Blend with the bad first-pass output for smooth scene transitions.
+                img_merged = image_weighted_merge(img_color, img_ref, weight=retry_blend_weight)
+                # Inject as new perm_mem reference and re-colorize.
+                self.set_ref_frame(img_merged, frame_propagate=False)
+                img_color = self.colorize_frame(ti, frame_i)
+            except Exception:
+                if debug:
+                    _buf_warning(f"Frame {ti} retry failed, using first-pass result")
         return img_color
 
     def colorize_batch_frames(self, frame_list: list[Image] = None, ref_list: list[Image] = None,
@@ -409,6 +414,25 @@ class ColorMNetRender2:
     def get_frame_count(self) -> int:
         return self.frame_count
 
+
+    def reset_state(self):
+        """Lightweight reset: re-create the inference core and clear frame
+        state without reloading the model weights from disk.  Used when the
+        server-side render must be refreshed across graph restarts (e.g.
+        VSEdit loop)."""
+        if self.processor is not None:
+            del self.processor
+        gc.collect()
+        torch.cuda.empty_cache()
+        self.processor = InferenceCore(self.network, config=self.config)
+        self.frame_count = 0
+        self.total_colored_frames = 0
+        self.first_mask_loaded = False
+        self.ref_img = None
+        self.ref_img_valid = None
+        self.img = None
+        self.ref_count = 0
+        self.ref_count_prv = 0
     def colorize_frame(self, ti: int = None, frame_i: Image = None, lab_mode: str = "gpu") -> Image:
 
         self.total_colored_frames += 1

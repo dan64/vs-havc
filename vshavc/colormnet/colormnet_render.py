@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-09-14
 version:
 LastEditors: Dan64
-LastEditTime: 2026-05-01
+LastEditTime: 2026-05-21
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
@@ -193,6 +193,25 @@ class ColorMNetRender:
     def get_frame_count(self) -> int:
         return self.frame_count
 
+
+    def reset_state(self):
+        """Lightweight reset: re-create the inference core and clear frame
+        state without reloading the model weights from disk.  Used when the
+        server-side render must be refreshed across graph restarts (e.g.
+        VSEdit loop)."""
+        if self.processor is not None:
+            del self.processor
+        gc.collect()
+        torch.cuda.empty_cache()
+        self.processor = InferenceCore(self.network, config=self.config)
+        self.frame_count = 0
+        self.total_colored_frames = 0
+        self.first_mask_loaded = False
+        self.ref_img = None
+        self.ref_img_valid = None
+        self.img = None
+        self.ref_count = 0
+        self.ref_count_prv = 0
     def colorize_frame(self, ti: int = None, frame_i: Image = None) -> Image:
 
         self.total_colored_frames += 1

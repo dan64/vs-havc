@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2025-09-28
 version:
 LastEditors: Dan64
-LastEditTime: 2026-04-30
+LastEditTime: 2026-05-13
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
@@ -12,6 +12,9 @@ CMNET2 frame client class for Vapoursynth.
 """
 import os
 import math
+import uuid
+import numpy as np
+from multiprocessing.shared_memory import SharedMemory
 from PIL import Image
 import warnings
 import xmlrpc.client
@@ -33,12 +36,28 @@ class ColorMNetClient2:
     def __init__(self, image_size: int = -1, vid_length: int = 1000, enable_resize: bool = False,
                  encode_mode: int = 0, propagate: bool = False, max_memory_frames: int = None,
                  reset_on_ref_update: bool = True, retry_mmsp_threshold: float = -1.0,
-                 retry_perm_share_threshold: float = 0.30, server_port: int = None):
+                 retry_perm_share_threshold: float = 0.30, retry_model: int = 0, server_port: int = None):
+        if server_port is None:
+            HAVC_LogMessage(MessageType.CRITICAL, "CMNET2 Client(): server port is None")
+            return
+        server_address = '127.0.0.1'
+
+        # Handle graph restart (e.g. VSEdit loop): if the server was recreated
+        # on a new port, reconnect to it instead of reusing the stale connection.
+        if self._initialized:
+            if server_port != self.server_port:
+                HAVC_LogMessage(MessageType.WARNING,
+                                f"CMNET2 Client(): change port from {self.server_port} to {server_port}")
+                self.server_port = server_port
+                self.uri = f"http://{server_address}:{server_port}"
+                self.server = xmlrpc.client.ServerProxy(uri=self.uri, allow_none=True, use_builtin_types=True)
+                # Reinitialize the server-side render
+                self.server.initialize(image_size, vid_length, enable_resize, encode_mode, propagate,
+                                       max_memory_frames, reset_on_ref_update, retry_mmsp_threshold,
+                                       retry_perm_share_threshold, retry_model)
+            return
+
         if not self._initialized:
-            server_address = '127.0.0.1'
-            if server_port is None:
-                HAVC_LogMessage(MessageType.CRITICAL, "CMNET2 Client(): server port is None")
-                return
             self.server_address = server_address
             self.server_port = server_port
             # Connect to a RPC instance; all the methods of the instance are
@@ -47,8 +66,8 @@ class ColorMNetClient2:
             try:
                 self.server = xmlrpc.client.ServerProxy(uri=self.uri, allow_none=True, use_builtin_types=True)
                 self.server.initialize(image_size, vid_length, enable_resize, encode_mode, propagate,
-                                       max_memory_frames, reset_on_ref_update,
-                                       retry_mmsp_threshold, retry_perm_share_threshold)
+                                       max_memory_frames, reset_on_ref_update, retry_mmsp_threshold,
+                                       retry_perm_share_threshold, retry_model)
                 self._initialized = True
             except Exception as exe:
                 HAVC_LogMessage(MessageType.CRITICAL,
@@ -75,10 +94,56 @@ class ColorMNetClient2:
                 import time
                 time.sleep(base_delay * (attempt + 1))
 
+    def _shm_write(self, img: Image.Image):
+        """
+        Allocate a SharedMemory segment, write the PIL Image pixels into it,
+        and return (shm, height, width).  The caller is responsible for
+        calling shm.close() and shm.unlink() once the RPC call completes.
+        """
+        arr  = np.array(img)
+        h, w = arr.shape[:2]
+        name = f"cmnet2_{uuid.uuid4().hex[:12]}"
+        shm  = SharedMemory(name=name, create=True, size=h * w * 3)
+        np.ndarray((h, w, 3), dtype=np.uint8, buffer=shm.buf)[:] = arr
+        return shm, h, w
+
+    def _shm_read(self, shm: SharedMemory, h: int, w: int) -> Image.Image:
+        """Read a PIL Image from a SharedMemory segment (must still be open)."""
+        arr = np.ndarray((h, w, 3), dtype=np.uint8, buffer=shm.buf)
+        return Image.fromarray(arr.copy(), mode="RGB")
+
+    def set_ref_frame(self, frame_ref: Image = None, frame_propagate: bool = False):
+        if frame_ref is None:
+            self._safe_remote_call(self.server.SetRefImageNone, frame_propagate)
+            return
+        shm, h, w = self._shm_write(frame_ref)
+        try:
+            self._safe_remote_call(
+                self.server.SetRefImageShm, shm.name, h, w, frame_propagate)
+        finally:
+            shm.close(); shm.unlink()
+
+    def colorize_frame(self, ti: int = None, frame_i: Image = None) -> Image:
+        if frame_i is None:
+            return None
+        shm_in, h, w = self._shm_write(frame_i)
+        shm_out = SharedMemory(
+            name=f"cmnet2_out_{uuid.uuid4().hex[:12]}", create=True, size=h * w * 3)
+        try:
+            self._safe_remote_call(
+                self.server.ColorizeImageShm, shm_in.name, shm_out.name, h, w, ti)
+            result = self._shm_read(shm_out, h, w)
+            self._drain_server_logs()
+            return result
+        finally:
+            shm_in.close();  shm_in.unlink()
+            shm_out.close(); shm_out.unlink()
+
     def colorize_frame_with_retry(self, ti: int = None, frame_i: Image = None,
                                   retry_blend_weight: float = 0.85,
                                   merge_engine_weight: float = 0.40,
-                                  render_factor: int = 24) -> Image:
+                                  render_factor: int = 24,
+                                   retry_model: int = 0) -> Image:
         """
         Single-call colorize + auto-retry. Server-side equivalent of:
 
@@ -97,36 +162,30 @@ class ColorMNetClient2:
         Parameters mirror ColorizeImageWithRetry on the server side; defaults
         are tuned empirically for HAVC retry workflow.
         """
-        if frame_i is not None:
-            img_bytes_i = image_to_byte_array(frame_i)
-            frame_bytes = self._safe_remote_call(self.server.ColorizeImageWithRetry,
-                img_bytes_i, ti, retry_blend_weight, merge_engine_weight, render_factor)
-            result = byte_array_to_image(frame_bytes)
+        if frame_i is None:
+            return None
+        shm_in, h, w = self._shm_write(frame_i)
+        shm_out = SharedMemory(
+            name=f"cmnet2_out_{uuid.uuid4().hex[:12]}", create=True, size=h * w * 3)
+        try:
+            self._safe_remote_call(
+                self.server.ColorizeImageWithRetryShm,
+                shm_in.name, shm_out.name, h, w,
+                ti, retry_blend_weight, merge_engine_weight, render_factor)
+            result = self._shm_read(shm_out, h, w)
             self._drain_server_logs()
             return result
-        else:
-            return None
-
-    def set_ref_frame(self, frame_ref: Image = None, frame_propagate: bool = False):
-        if frame_ref is None:
-            self._safe_remote_call(self.server.SetRefImageNone, frame_propagate)
-        else:
-            frame_bytes = image_to_byte_array(frame_ref)
-            self._safe_remote_call(self.server.SetRefImage, frame_bytes, frame_propagate)
-
-    def colorize_frame(self, ti: int = None, frame_i: Image = None) -> Image:
-        if frame_i is not None:
-            img_bytes_i = image_to_byte_array(frame_i)
-            frame_bytes = self._safe_remote_call(self.server.ColorizeImage, img_bytes_i, ti)
-            result = byte_array_to_image(frame_bytes)
-            self._drain_server_logs()
-            return result
-        else:
-            return None
+        finally:
+            shm_in.close();  shm_in.unlink()
+            shm_out.close(); shm_out.unlink()
 
     def preload_reference(self, ref_img: Image):
-        frame_bytes = image_to_byte_array(ref_img)
-        self._safe_remote_call(self.server.PreloadReference, frame_bytes)
+        shm, h, w = self._shm_write(ref_img)
+        try:
+            self._safe_remote_call(
+                self.server.PreloadReferenceShm, shm.name, h, w)
+        finally:
+            shm.close(); shm.unlink()
 
     def slide_permanent_memory(self, n_frames: int):
         self._safe_remote_call(self.server.SlidePermanentMemory, n_frames)
@@ -141,36 +200,11 @@ class ColorMNetClient2:
 
         XMLRPC serializes NaN as None on the wire; this method converts None
         back to float('nan') so the tuple is always (float, float).
-
-        Returns:
-            tuple[float, float] : (mmsp, perm_share). Both NaN if the server
-                                   has not yet run a match_memory call.
         """
-        try:
-            payload = self.server.GetLastMatchMetrics()
-        except Exception:
-            # Network glitch or server not initialized: cannot decide.
-            return float('nan'), float('nan')
-        if not payload or len(payload) < 2:
-            return float('nan'), float('nan')
-        mmsp = float('nan') if payload[0] is None else float(payload[0])
-        perm_share = float('nan') if payload[1] is None else float(payload[1])
+        mmsp, perm_share = self.server.GetLastMatchMetrics()
+        mmsp       = float('nan') if mmsp       is None else float(mmsp)
+        perm_share = float('nan') if perm_share is None else float(perm_share)
         return mmsp, perm_share
-
-    def reference_frame_missing(self) -> bool:
-        """
-        Returns True when the most recent colorize_frame call on the server
-        indicates that an additional reference frame is likely needed for
-        proper colorization. Thresholds are the ones configured at __init__.
-
-        Stateless: each call evaluates the latest metrics independently.
-        Returns False if the server is not reachable.
-        """
-        try:
-            return bool(self.server.ReferenceFrameMissing())
-        except Exception:
-            # Network glitch or server not initialized: be conservative.
-            return False
 
     def _drain_server_logs(self):
         """Pull log messages from the server and forward them to VS."""
@@ -179,8 +213,6 @@ class ColorMNetClient2:
         try:
             messages = self.server.PollLogMessages()
         except Exception:
-            # Network glitch or server not yet ready: skip silently,
-            # logs are best-effort and must never break inference.
             return
         for item in messages:
             if not item or len(item) < 2:
@@ -190,14 +222,8 @@ class ColorMNetClient2:
                 mt = MessageType(int(level))
             except ValueError:
                 mt = MessageType.INFORMATION
-            # Never escalate server-side messages to EXCEPTION here: we don't
-            # want a buffered log to raise vs.Error during frame processing.
             if mt == MessageType.EXCEPTION:
                 mt = MessageType.CRITICAL
-            # Server-side diagnostic logs are DEBUG/INFORMATION by origin.
-            # Many VS host applications filter those levels out of their console,
-            # so we promote them to WARNING to make them visible.
             if mt in (MessageType.DEBUG, MessageType.INFORMATION):
                 mt = MessageType.WARNING
             HAVC_LogMessage(mt, text)
-

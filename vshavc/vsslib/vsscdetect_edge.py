@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-04-08
 version:
 LastEditors: Dan64
-LastEditTime: 2026-01-15
+LastEditTime: 2026-05-15
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
@@ -29,9 +29,9 @@ from vshavc.vsslib.vsresize import resize_min_HW
 from vshavc.vsslib.vsutils import frame_to_image
 
 
-def SceneDetectEdges(clip: vs.VideoNode, threshold: float = 0.07, frequency: int = 0, ssim_threshold: float = 0.0,
-                     sc_diff_offset: int = 2, sc_min_int:int = 30, sc_mult_tht: int = 7, tht_white: float =0.70,
-                     tht_black: float =0.12, sc_debug: bool = False) -> vs.VideoNode:
+def SceneDetectEdges(clip: vs.VideoNode, threshold: float = 0.04, frequency: int = 0, ssim_threshold: float = 0.80,
+                     sc_diff_offset: int = 2, sc_min_int:int = 30, sc_mult_tht: int = 15, tht_white: float =0.70,
+                     tht_black: float =0.10, sc_debug: bool = False) -> vs.VideoNode:
     """Edge-based scene change detector using a Retinex-enhanced Kirsch/TCanny edge mask.
 
     Computes masked pixel-difference statistics between temporally offset frames, combining
@@ -39,14 +39,14 @@ def SceneDetectEdges(clip: vs.VideoNode, threshold: float = 0.07, frequency: int
     further refines the detections. Annotates _SceneChangePrev/_SceneChangeNext frame properties.
 
     :param clip:            Input clip (any format).
-    :param threshold:       Edge-diff threshold for scene detection [0, 1]. Default 0.07.
+    :param threshold:       Edge-diff threshold for scene detection [0, 1]. Default 0.04.
     :param frequency:       If > 0, emit a scene change at least every 'frequency' frames. Default 0.
-    :param ssim_threshold:  SSIM post-filter threshold [0, 1]. 0 = disabled. Default 0.0.
+    :param ssim_threshold:  SSIM post-filter threshold [0, 1]. 0 = disabled. Default 0.80.
     :param sc_diff_offset:  Frame comparison offset in frames (≥ 1). Default 2.
     :param sc_min_int:      Minimum frame distance between scene changes. Default 30.
-    :param sc_mult_tht:     Multiplier for the mandatory high-threshold override. Default 7.
+    :param sc_mult_tht:     Multiplier for the mandatory high-threshold override. Default 15.
     :param tht_white:       Luma upper bound for valid scene changes. Default 0.70.
-    :param tht_black:       Luma lower bound for valid scene changes. Default 0.12.
+    :param tht_black:       Luma lower bound for valid scene changes. Default 0.10.
     :param sc_debug:        If True, log per-frame debug messages. Default False.
     :return:                Clip with _SceneChangePrev/_SceneChangeNext properties set.
     """
@@ -231,7 +231,7 @@ def vs_edge_based_scenedetect(
     # --- 1. Preparazione GRAY16 ---
     gray = core.resize.Bicubic(clip, format=vs.GRAY8, matrix_s="709")
     gray = resize_min_HW(gray)
-    sc_gray = gray.misc.SCDetect(threshold=0.10)
+    sc_gray = vsutil.SCDetect(clip=gray, threshold=0.10)
 
     clip_curr = gray
     clip_next = gray[sc_diff_offset:] + gray[-sc_diff_offset]

@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-09-27
 version:
 LastEditors: Dan64
-LastEditTime: 2026-04-21
+LastEditTime: 2026-05-21
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
@@ -32,11 +32,26 @@ class ColorMNetClient:
     def __init__(self, image_size: int = -1, vid_length: int = 1000, enable_resize: bool = False,
                  encode_mode: int = 0, propagate: bool = False, max_memory_frames: int = None,
                  reset_on_ref_update: bool = True, server_port: int = None):
+        if server_port is None:
+            HAVC_LogMessage(MessageType.CRITICAL, "ColorMNet client(): server port is None")
+            return
+        server_address = '127.0.0.1'
+
+        # Handle graph restart (e.g. VSEdit loop): if the server was recreated
+        # on a new port, reconnect to it instead of reusing the stale connection.
+        if self._initialized:
+            if server_port != self.server_port:
+                HAVC_LogMessage(MessageType.WARNING,
+                                f"ColorMNet Client(): change port from {self.server_port} to {server_port}")
+                self.server_port = server_port
+                self.uri = f"http://{server_address}:{server_port}"
+                self.server = xmlrpc.client.ServerProxy(uri=self.uri, allow_none=True, use_builtin_types=True)
+                # Reinitialize the server-side render
+                self.server.initialize(image_size, vid_length, enable_resize, encode_mode, propagate,
+                                       max_memory_frames, reset_on_ref_update)
+            return
+
         if not self._initialized:
-            server_address = '127.0.0.1'
-            if server_port is None:
-                HAVC_LogMessage(MessageType.CRITICAL, "ColorMNet client(): server port is None")
-                return
             self.server_address = server_address
             self.server_port = server_port
             # Connect to a RPC instance; all the methods of the instance are
@@ -99,4 +114,3 @@ class ColorMNetClient:
             if mt in (MessageType.DEBUG, MessageType.INFORMATION):
                 mt = MessageType.WARNING
             HAVC_LogMessage(mt, text)
-

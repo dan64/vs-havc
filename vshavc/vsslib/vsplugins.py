@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-10-09
 version: 
 LastEditors: Dan64
-LastEditTime: 2024-10-26
+LastEditTime: 2026-05-22
 ------------------------------------------------------------------------------- 
 Description:
 ------------------------------------------------------------------------------- 
@@ -181,7 +181,7 @@ def load_SCDetect_plugin() -> bool:
                 HAVC_LogMessage(MessageType.INFORMATION, f"[INFO] Plugin 'SCDetect' loaded from: {plugin_path}")
             return True
     except Exception as error:
-        HAVC_LogMessage(MessageType.WARNING, "[WARNING] Plugin 'SCDetect': check/load failed ->", str(error))
+        HAVC_LogMessage(MessageType.INFORMATION, "[WARNING] Plugin 'SCDetect': check/load failed ->", str(error))
         return False
 
 def load_ReduceFlicker_plugin() -> bool:

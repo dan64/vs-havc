@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-04-08
 version: 
 LastEditors: Dan64
-LastEditTime: 2025-10-19
+LastEditTime: 2026-05-19
 ------------------------------------------------------------------------------- 
 Description:
 ------------------------------------------------------------------------------- 
@@ -443,6 +443,61 @@ def mean_pixel_distance(y_left: np.ndarray, y_right: np.ndarray, normalize: bool
     dist = np.sum(np.abs(y_left.astype(np.int32) - y_right.astype(np.int32))) / num_pixels
     return dist / 255.0
 
+def SCDetect(clip: vs.VideoNode, threshold: float = 0.1, plane: int = 0) -> vs.VideoNode:
+    """
+    Scene change detection with _SceneChangePrev/_SceneChangeNext frame properties.
+    Uses core.misc.SCDetect if available (plane=0 only), otherwise falls back to
+    a std.PlaneStats-based reimplementation.
+
+    Args:
+        clip      : Input clip
+        threshold : Scene change threshold (default: 0.1, must be 0.0–1.0)
+        plane     : Plane to analyze; only honoured in fallback path —
+                    misc.SCDetect always uses plane 0
+
+    Returns:
+        Clip with _SceneChangePrev and _SceneChangeNext frame properties set.
+    """
+    if not isinstance(clip, vs.VideoNode):
+        raise vs.Error('SCDetect: this is not a clip')
+    if not (0.0 <= threshold <= 1.0):
+        raise vs.Error('SCDetect: threshold must be between 0.0 and 1.0')
+    if clip.num_frames < 2:
+        raise vs.Error('SCDetect: clip must have more than one frame')
+
+    if hasattr(vs.core, 'misc') and plane == 0:
+        if clip.format.color_family == vs.RGB:
+            if clip.format != vs.GRAY8:
+                sc = clip.resize.Point(format=vs.GRAY8, matrix_s='709')
+            sc = vs.core.misc.SCDetect(sc, threshold=threshold)
+
+            def _copy_props(n: int, f: list[vs.VideoFrame]) -> vs.VideoFrame:
+                fout = f[0].copy()
+                fout.props['_SceneChangePrev'] = f[1].props['_SceneChangePrev']
+                fout.props['_SceneChangeNext'] = f[1].props['_SceneChangeNext']
+                return fout
+
+            return clip.std.ModifyFrame(clips=[clip, sc], selector=_copy_props)
+
+        return vs.core.misc.SCDetect(clip, threshold=threshold)
+
+    # prev_stats[n] = diff(frame_{n-1}, frame_n) → SceneChangePrev
+    # next_stats[n] = diff(frame_n, frame_{n+1}) → SceneChangeNext
+    prev_shifted = clip.std.DuplicateFrames(0).std.Trim(last=clip.num_frames - 1)
+    prev_stats = vs.core.std.PlaneStats(prev_shifted, clip, plane=plane)
+    next_shifted = clip.std.DuplicateFrames(clip.num_frames - 1).std.Trim(first=1)
+    next_stats = vs.core.std.PlaneStats(clip, next_shifted, plane=plane)
+
+    def _set_sc_props(n: int, f: list[vs.VideoFrame]) -> vs.VideoFrame:
+        fout = f[0].copy()
+        fout.props['_SceneChangePrev'] = int(float(f[1].props.get('PlaneStatsDiff', 0.0)) > threshold)
+        fout.props['_SceneChangeNext'] = int(float(f[2].props.get('PlaneStatsDiff', 0.0)) > threshold)
+        return fout
+
+    return clip.std.ModifyFrame(
+        clips=[clip, prev_stats, next_stats],
+        selector=_set_sc_props
+    )
 
 def debug_ModifyFrame(f_start: int = 0, f_end: int = 1, clip: vs.VideoNode = None,
                       clips: list[vs.VideoNode] = None, selector: partial = None, silent: bool = True) -> vs.VideoNode:

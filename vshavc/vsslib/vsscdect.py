@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-04-08
 version: 
 LastEditors: Dan64
-LastEditTime: 2025-02-09
+LastEditTime: 2026-05-19
 ------------------------------------------------------------------------------- 
 Description:
 ------------------------------------------------------------------------------- 
@@ -305,7 +305,7 @@ class SceneDetection:
                                                 min_length=DEF_SC_MIN_DISTANCE)
             else:
                 vsplugins.load_SCDetect_plugin()
-                sc = sc.misc.SCDetect(threshold=threshold)
+                sc = vsutil.SCDetect(clip=sc, threshold=threshold)
                 sc = self.filter_black_white(clip, sc)
 
         except Exception as error:

@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-02-29
 version: 
 LastEditors: Dan64
-LastEditTime: 2026-05-08
+LastEditTime: 2026-05-24
 ------------------------------------------------------------------------------- 
 Description:
 ------------------------------------------------------------------------------- 
@@ -39,7 +39,7 @@ from vshavc.vsslib.vsfilters import  vs_sc_chroma_bright_tweak, vs_sc_recover_cl
 from vshavc.vsslib.vsfilters import vs_dark_tweak, vs_chroma_bright_tweak, vs_colormap, vs_chroma_stabilizer_ex
 from vshavc.vsslib.vsfilters import vs_get_clip_frame
 from vshavc.vsslib.vsmodels import vs_sc_deoldify, vs_sc_ddcolor, vs_colormnet, vs_deepex, vs_deepremaster
-from vshavc.vsslib.vsmodels import vs_colormnet2
+from vshavc.vsslib.vsmodels import vs_colormnet2, vs_colormnet2dit
 from vshavc.vsslib.vsplugins import vs_reduce_flicker, vs_timecube
 from vshavc.vsslib.vsretinex import vs_retinex
 from vshavc.vsslib.vsutils import vs_sc_export_frames, vs_list_export_frames, HAVC_LogMessage, MessageType
@@ -59,7 +59,7 @@ import vshavc.remaster
 
 import vshavc.vsslib.constants as constants
 
-__version__ = "5.8.1"
+__version__ = "5.8.5"
 
 import warnings
 import logging
@@ -1033,7 +1033,7 @@ def HAVC_ColorAdjust(clip: vs.VideoNode, BlackWhiteTune: str = 'Light', BlackWhi
     # disable packages warnings
     disable_warnings()
 
-    DeepExModel: int = 0
+    DeepExModel: int = 3   # ColorMNet
     DeepExRefMerge: int = 1 + min(max(4 - Strength, 0), 4)
     DeepExPreset: str = 'medium'
     DeepExMaxMemFrames: int = 0
@@ -1452,8 +1452,8 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                 only_ref_frames: bool = False, dark: bool = False, dark_p: list = (0.2, 0.8), smooth: bool = False,
                 smooth_p: list = (0.3, 0.7, 0.9, 0.0, "none"), colormap: str = "none", ref_weight: float = None,
                 ref_thresh: float = None, ref_freq: int = None, ex_model: int = 0, encode_mode: int = 0,
-                max_memory_frames: int = 0, retry_threshold: float = 0, high_resolution: bool = False,
-                torch_dir: str = model_dir) -> vs.VideoNode:
+                max_memory_frames: int = 0, retry_threshold: float = 0, retry_model: int = 0,
+                high_resolution: bool = False, torch_dir: str = model_dir) -> vs.VideoNode:
     """Towards Video-Realistic Colorization via Exemplar-based framework
 
     :param clip:                Clip to process, any format is supported
@@ -1558,9 +1558,17 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                                     min=2, max=50
                                 If = 0 will be filled with the value of 20.
     :param retry_threshold:     (CMNET2 only) Threshold used to identify frames that may benefit from an additional
-                                reference frame (retry the colorization using: 60%*DeOldify + 40%*DDColor).
-                                Range [0.0, 1.0], Default=0.0 (disabled). High values (> 0.3) trigger more retry, while
-                                lower values (< 0.3) trigger less retry. Suggested value in the range: 0.20-0.35
+                                 reference frame. Range [0.0, 1.0], default 0.0 (disabled).
+                                 High values (> 0.3) trigger more retry, while lower values (< 0.3) trigger less retry.
+                                 Suggested value in the range: 0.20-0.35.
+    :param retry_model:         (CMNET2 only) If retry_threshold > 0 it represents the model used to colorize the missing
+                                 reference frames. Allowed values, are:
+                                     0 : Model HAVC (colorization with: 60%*DeOldify + 40%*DDColor)
+                                     1 : Model DiT colorization with model_precision = "fp4" (RTX 50-Series)
+                                     2 : Model DiT colorization with model_precision = "int4" (RTX 30/40-Series)
+                                 For the models 1 and 2 is necessary to run the DiT Server as explained in the docstring
+                                 of HAVC_cmnet2dit(). In the case the DiT Server is not running will be used the model 0
+                                 (Model HAVC). Range [0, 1, 2], default = 0
     :param high_resolution:     if true the resolution of the inference will be increased, this will improve the color
                                 accuracy, but the inference will be about 2x slower. default = False.
     :param torch_dir:           torch hub dir location, default is model directory, if set to None will switch
@@ -1741,7 +1749,7 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                 clip_colored = vs_colormnet2(clip, clip_ref, clip_sc, image_size=-1, enable_resize=enable_resize,
                                             encode_mode=encode_mode, max_memory_frames=max_memory_frames,
                                             frame_propagate=ref_same_as_video, render_vivid=render_vivid,
-                                            ref_weight=ref_weight, retry_perm_share_threshold=retry_threshold)
+                                            ref_weight=ref_weight, retry_perm_share_threshold=retry_threshold, retry_model=retry_model)
             case 1:  # Deep-Exemplar
                 clip_colored = vs_deepex(clip, clip_ref, clip_sc, image_size=d_size, enable_resize=enable_resize,
                                          propagate=ref_same_as_video, wls_filter_on=True, render_vivid=render_vivid,
@@ -1777,7 +1785,7 @@ def HAVC_cmnet2(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                 dark_p: list = (0.2, 0.8), smooth: bool = False, smooth_p: list = (0.3, 0.7, 0.9, 0.0, "none"),
                 colormap: str = "none", ref_weight: float = None, ref_thresh: float = None, ref_freq: int = None,
                 encode_mode: int = 0, max_memory_frames: int = 0, ref_mode: int = 1, retry_threshold: float = 0.0,
-                torch_dir: str = model_dir) -> vs.VideoNode:
+                retry_model: int = 0, torch_dir: str = model_dir) -> vs.VideoNode:
     """CMNET2 colorization filter
 
     :param clip:                Clip to process, any clip format is supported
@@ -1865,10 +1873,18 @@ def HAVC_cmnet2(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                                 Allowed values are:
                                     0: will use direct access to reference frame folder
                                     1: will use Vapoursynth clips to access to reference frames (default)
-    :param retry_threshold:     Threshold used to identify frames that may benefit from an additional reference frame
-                                (retry the colorization using: 60%*DeOldify + 40%*DDColor).
-                                Range [0.0, 1.0], default 0.0 (disabled). High values (> 0.3) trigger more retry, while
-                                lower values (< 0.3) trigger less retry. Suggested value in the range: 0.20-0.35
+    :param retry_threshold:     Threshold used to identify frames that may benefit from an additional
+                                reference frame. Range [0.0, 1.0], default 0.0 (disabled).
+                                High values (> 0.3) trigger more retry, while lower values (< 0.3) trigger less retry.
+                                Suggested value in the range: 0.20-0.35.
+    :param retry_model:         If retry_threshold > 0 it represents the model used to colorize the missing
+                                reference frames. Allowed values, are:
+                                     0 : Model HAVC (colorization with: 60%*DeOldify + 40%*DDColor)
+                                     1 : Model DiT colorization with model_precision = "fp4" (RTX 50-Series)
+                                     2 : Model DiT colorization with model_precision = "int4" (RTX 30/40-Series)
+                                For the models 1 and 2 is necessary to run the DiT Server as explained in the docstring
+                                of HAVC_cmnet2dit(). In the case the DiT Server is not running will be used the model 0
+                                (Model HAVC). Range [0, 1, 2], default = 0
     :param torch_dir:           torch hub dir location, default is model directory, if set to None will switch
                                 to torch cache dir
     """
@@ -2026,11 +2042,169 @@ def HAVC_cmnet2(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                                             encode_mode=encode_mode, max_memory_frames=max_memory_frames,
                                             frame_propagate=ref_same_as_video, render_vivid=render_vivid,
                                             ref_weight=ref_weight, sc_framedir=sc_framedir if use_dir_refs else None,
-                                            retry_perm_share_threshold=retry_threshold)
+                                            retry_perm_share_threshold=retry_threshold, retry_model=retry_model)
 
     clip_resized = clip_colored.resize.Spline36(width=clip_orig.width, height=clip_orig.height)
 
     # restore original resolution details, 5% faster than ShufflePlanes()
+    clip_new = vs_recover_clip_luma(clip_orig, clip_resized)
+
+    return restore_format(clip_new, orig_fmt)
+    
+
+def HAVC_cmnet2dit(clip: vs.VideoNode = None,
+                   render_speed: str = 'auto',
+                   render_vivid: bool = False,
+                   sc_thresh: float = 0.035,
+                   sc_tht_ssim: float= 0.80,
+                   sc_min_int: int = 25,
+                   sc_tht_offset: int = 2,
+                   sc_min_freq: int = 0,
+                   max_memory_frames: int = 20,
+                   dit_engine_params: dict = None,
+                   retry_threshold: float = 0.0,
+                   retry_model: int = 1,
+                   torch_dir: str = model_dir) -> vs.VideoNode:
+    """CMNET2-DIT colorization filter.
+
+    Like HAVC_cmnet2() but designed for B&W reference frames: scene-change
+    frames extracted from the input clip are colorized by a DiT-based model
+    (DiT Engine, accessed via RPC) *before* being loaded into CMNET2
+    permanent memory.  This makes HAVC_cmnet2dit() self-contained, no
+    eparate pre-colored reference clip is needed.
+
+    The DiT colorization of reference frames always runs in pairs
+    (colorize_image_pair()) to exploit the DiT model's batched forward pass.
+    A single colorize_image() call handles any odd leftover reference frame at
+    the end of the clip.
+
+    :param clip:                B&W source clip; any format is accepted and
+                                converted internally to RGB24.
+    :param render_speed:        Preset controlling CMNET2 render resolution.
+                                Allowed values (case-insensitive):
+                                    'Auto'   – optimal size chosen automatically (default)
+                                    'Fast'   – more washed-out colours
+                                    'Medium' – slightly washed out
+                                    'Slow'   – slightly more vivid
+                                    'Slower' – most accurate (usually very slow)
+    :param render_vivid:        If True, apply a ~15% saturation boost after
+                                colorization. Default: False.
+    :param sc_thresh:           Scene edges-detection threshold used to select
+                                reference frames from the input clip.
+                                Range [0.01, 0.15]. Default: 0.035.
+    :param sc_tht_ssim:         Threshold used by the SSIM (Structural Similarity Index Metric) selection filter.
+                                If > 0, will be activated a filter that will improve the scene-change detection,
+                                by discarding images that are similar. Suggested values are between 0.35 and 0.85,
+                                range [0-1], default 0.80
+    :param sc_min_int:          Minimum frame distance between scene changes. Default 25.
+    :param sc_tht_offset:       Offset index used for the Scene change detection. The comparison will be performed,
+                                between frame[n] and frame[n-offset]. An offset > 1 is useful to detect blended scene
+                                change, range[1, 25]. Default = 2.
+    :param sc_min_freq:         If > 0 will be generated at least 1 reference frame every "sc_min_freq" frames.
+                                range [0-1000], default: 0.
+    :param max_memory_frames:   Sliding permanent-memory window size for CMNET2.
+                                Automatically rounded down to the nearest even number
+                                (required for pair-wise DIT colorization).
+                                0 → DEF_XRF_WINDOW_SIZE (20). Suggested: 10–500. Default = 20
+    :param dit_engine_params:   Optional dict of keyword arguments forwarded to
+                                DiT Engine Server.  Any key not provided falls back
+                                to the DiT Engine Server default.  Recognized keys:
+                                    host            : RPC server address (default "127.0.0.1")
+                                    port            : RPC server port   (default 8765)
+                                    model_name      : Nunchaku model name
+                                    model_precision : "fp4" (RTX 50xx) or "int4" (RTX 30/40xx)
+                                    model_rank      : SVD rank "32" or "128"
+                                    model_inference_steps : steps used to pick the model file
+                                    cache_dir       : HuggingFace cache directory
+                                    full_model_path : absolute path to a local .safetensors
+                                    prompt          : text prompt guiding colorization
+                                    steps           : inference steps per image (default 2)
+                                    img_size        : max long-side in pixels before inference (0 = original size)
+    :param retry_threshold:     Threshold used to identify frames that may benefit from
+                                 an additional reference frame. Range [0.0, 1.0],
+                                 default 0.0 (disabled). Suggested: 0.20-0.35.
+    :param retry_model:         If retry_threshold > 0, model used to colorize missing (default: 1)
+                                reference frames. Allowed values are:
+                                     0 = HAVC (DeOldify + DDColor),
+                                     1 = DiT fp4,
+                                     2 = DiT int4.
+    :param torch_dir:           Torch hub directory for CMNET2 model weights.
+                                Default: package model directory.
+                                Pass None to use the Torch cache directory.
+    :return:                    Colorized clip in the same format as the input.
+    """
+
+    disable_warnings()
+
+    if not torch.cuda.is_available():
+        HAVC_LogMessage(MessageType.EXCEPTION, "HAVC_cmnet2dit: CUDA is not available")
+
+    clip, orig_fmt = convert_format_RGB24(clip)
+
+    if torch_dir is not None:
+        torch.hub.set_dir(torch_dir)
+
+    # -----------------------------------------------------------------------
+    # Scene-change detection — produces ref frames from the B&W input clip
+    # -----------------------------------------------------------------------
+    # Apply defaults when caller did not provide explicit thresholds.
+    if sc_thresh is None:
+        ref_thresh = 0.035
+    if sc_min_int is None:
+        ref_freq = 25
+
+    # forced encode_mode=0 due to memory limitation
+    encode_mode = 0
+
+    # Run scene detection on the (resized-later, but prop-only here) clip to
+    # obtain _SceneChangePrev props.  clip_ref == clip internally: the B&W
+    # input clip is both the content to colorize and the source of reference
+    # frames that DiT Engine Server will colorize.
+    clip_ref = SceneDetectEdges(clip, threshold=sc_thresh, frequency=sc_min_freq, ssim_threshold=sc_tht_ssim,
+                                sc_diff_offset=sc_tht_offset, sc_min_int=sc_min_int, sc_mult_tht=15,
+                                tht_white=0.70, tht_black=0.10)
+    # Copy scene-change props to the working clip so that downstream VS filters
+    # (e.g. vs_recover_clip_luma) can access them if needed.
+    clip = CopySCDetect(clip, clip_ref)
+
+    clip_orig = clip
+
+    # No ref-merge in the DIT path.
+    ref_same_as_video = False
+    clip_sc = None
+
+    # -----------------------------------------------------------------------
+    # Resize to model inference resolution
+    # -----------------------------------------------------------------------
+    enable_resize = False   # static: consistent with HAVC_cmnet2 default
+
+    d_size = get_render_size(clip.width, clip.height, render_speed=render_speed.lower())
+    clip = clip.resize.Spline36(width=d_size[0], height=d_size[1])
+    clip_ref = clip_ref.resize.Spline36(width=d_size[0], height=d_size[1])
+
+    # -----------------------------------------------------------------------
+    # CMNET2-DIT colorization
+    # -----------------------------------------------------------------------
+    clip_colored = vs_colormnet2dit(
+        clip, clip_ref,
+        dit_engine_params=dit_engine_params,
+        image_size=-1,
+        enable_resize=enable_resize,
+        encode_mode=encode_mode,
+        max_memory_frames=max_memory_frames,
+        frame_propagate=ref_same_as_video,
+        render_vivid=render_vivid,
+        retry_perm_share_threshold=retry_threshold,
+        retry_model=retry_model,
+    )
+
+    # -----------------------------------------------------------------------
+    # Restore original resolution and format
+    # -----------------------------------------------------------------------
+    clip_resized = clip_colored.resize.Spline36(width=clip_orig.width, height=clip_orig.height)
+
+    # Graft the original luma back onto the coloured chroma for sharpness
+    # (~5% faster than ShufflePlanes).
     clip_new = vs_recover_clip_luma(clip_orig, clip_resized)
 
     return restore_format(clip_new, orig_fmt)
@@ -2260,7 +2434,7 @@ def HAVC_restore_video(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None,
                        render_speed: str = 'auto', ex_model: int = 0, ref_merge: int = 0, ref_weight: float = None,
                        ref_thresh: float = None, ref_freq: int = None, ref_norm: bool = False,
                        max_memory_frames: int = 0, render_vivid: bool = False, encode_mode: int = 0,
-                       retry_threshold: float = 0, torch_dir: str = model_dir) -> vs.VideoNode:
+                       retry_threshold: float = 0, retry_model: int = 0, torch_dir: str = model_dir) -> vs.VideoNode:
     """Colorization Function using DeepRemaster/ColorMNet to restore external video provided externally in clip_ref
 
     :param clip:                Clip to process, any format is supported
@@ -2335,9 +2509,17 @@ def HAVC_restore_video(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None,
                                                          since in this case is better to use a short frame memory or
                                                          the Deep-Exemplar model, which is faster.
     :param retry_threshold:     (CMNET2 only) Threshold used to identify frames that may benefit from an additional
-                                reference frame (retry the colorization using: 60%*DeOldify + 40%*DDColor).
-                                Range [0.0, 1.0], default 0.0 (disabled). High values (> 0.3) trigger more retry, while
-                                lower values (< 0.3) trigger less retry. Suggested value in the range: 0.20-0.35
+                                reference frame. Range [0.0, 1.0], default 0.0 (disabled).
+                                High values (> 0.3) trigger more retry, while lower values (< 0.3) trigger less retry.
+                                Suggested value in the range: 0.20-0.35.
+    :param retry_model:         (CMNET2 only) If retry_threshold > 0 it represents the model used to colorize the missing
+                                reference frames. Allowed values, are:
+                                     0 : Model HAVC (colorization with: 60%*DeOldify + 40%*DDColor)
+                                     1 : Model DiT colorization with model_precision = "fp4" (RTX 50-Series)
+                                     2 : Model DiT colorization with model_precision = "int4" (RTX 30/40-Series)
+                                For the models 1 and 2 is necessary to run the DiT Server as explained in the docstring
+                                of HAVC_cmnet2dit(). In the case the DiT Server is not running will be used the model 0
+                                (Model HAVC). Range [0, 1, 2], default = 0
     :param torch_dir:           torch hub dir location, default is model directory, if set to None will switch
                                 to torch cache dir
     """
@@ -2404,7 +2586,7 @@ def HAVC_restore_video(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None,
             clip_colored = vs_colormnet2(clip, clip_ref, clip_sc, image_size=-1, enable_resize=enable_resize,
                                          encode_mode=encode_mode, max_memory_frames=max_memory_frames,
                                          frame_propagate=ref_same_as_video, render_vivid=render_vivid,
-                                         ref_weight=ref_weight,  retry_perm_share_threshold=retry_threshold)
+                                         ref_weight=ref_weight,  retry_perm_share_threshold=retry_threshold, retry_model=retry_model)
         case 1:  # Deep-Exemplar
             clip_colored = vs_deepex(clip, clip_ref, clip_sc, image_size=d_size, enable_resize=enable_resize,
                                      propagate=ref_same_as_video, wls_filter_on=True, render_vivid=render_vivid,

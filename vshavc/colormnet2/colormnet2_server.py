@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2025-09-28
 version:
 LastEditors: Dan64
-LastEditTime: 2026-05-01
+LastEditTime: 2026-05-21
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
@@ -62,12 +62,18 @@ class ColorMNetRPCServer2:
         def initialize(self, image_size: int = -1, vid_length: int = 1000, enable_resize: bool = False,
                        encode_mode: int = 0, propagate: bool = False, max_memory_frames: int = None,
                        reset_on_ref_update: bool = True, retry_mmsp_threshold: float = -1.0,
-                       retry_perm_share_threshold: float = 0.30):
+                       retry_perm_share_threshold: float = 0.30, retry_model: int = 0):
 
+            # Force a fresh render on reinitialization (e.g. VSEdit loop).
+            # The render is a singleton and would otherwise keep stale state.
+            if self.render is not None:
+                log_warning("CMNET2 Render state reset")
+                self.render.reset_state()
             self.render = ColorMNetRender2(image_size, vid_length, enable_resize, encode_mode, propagate,
                                            max_memory_frames, reset_on_ref_update=reset_on_ref_update,
                                            retry_mmsp_threshold=retry_mmsp_threshold,
                                            retry_perm_share_threshold=retry_perm_share_threshold,
+                                           retry_model = retry_model,
                                            project_dir=package_dir)
 
 
@@ -193,6 +199,84 @@ class ColorMNetRPCServer2:
             XML-RPC payload minimal. Level matches MessageType integer values.
             """
             return [list(m) for m in ServerLogBuffer().drain()]
+
+        # ------------------------------------------------------------------
+        # Shared-memory variants — zero-copy transport (same-host only).
+        #
+        # The CLIENT owns and manages all SharedMemory segments (create/unlink).
+        # The server only attaches (create=False) and detaches — no cleanup
+        # responsibility. This mirrors the protocol used in DiTServerRPC.
+        # ------------------------------------------------------------------
+
+        @staticmethod
+        def _shm_to_img(shm_name: str, height: int, width: int):
+            """Attach to a client-owned SharedMemory segment and return a PIL Image."""
+            from multiprocessing.shared_memory import SharedMemory
+            shm = SharedMemory(name=shm_name, create=False)
+            try:
+                arr = np.ndarray((height, width, 3), dtype=np.uint8, buffer=shm.buf)
+                return Image.fromarray(arr.copy(), mode="RGB")
+            finally:
+                shm.close()
+
+        @staticmethod
+        def _img_to_shm(shm_name: str, height: int, width: int, img: Image.Image):
+            """Write a PIL Image into a client-owned SharedMemory segment."""
+            from multiprocessing.shared_memory import SharedMemory
+            shm = SharedMemory(name=shm_name, create=False)
+            try:
+                arr = np.ndarray((height, width, 3), dtype=np.uint8, buffer=shm.buf)
+                arr[:] = np.array(img)
+            finally:
+                shm.close()
+
+        def SetRefImageShm(self, shm_name: str, height: int, width: int,
+                           frame_propagate: bool = False):
+            """Shared-memory variant of SetRefImage."""
+            img = self._shm_to_img(shm_name, height, width)
+            if self.render is not None:
+                self.render.set_ref_frame(img, frame_propagate)
+            else:
+                log_warning("CMNET2 Render is not initialized")
+
+        def ColorizeImageShm(self, shm_in_name: str, shm_out_name: str,
+                             height: int, width: int, ti: int = None):
+            """Shared-memory variant of ColorizeImage."""
+            img = self._shm_to_img(shm_in_name, height, width)
+            if self.render is not None:
+                img_colored = self.render.colorize_frame(ti, img)
+                self._img_to_shm(shm_out_name, height, width, img_colored)
+            else:
+                log_warning("CMNET2 Render is not initialized")
+                self._img_to_shm(shm_out_name, height, width, img)
+
+        def ColorizeImageWithRetryShm(self, shm_in_name: str, shm_out_name: str,
+                                      height: int, width: int, ti: int = None,
+                                      retry_blend_weight: float = 0.85,
+                                      merge_engine_weight: float = 0.40,
+                                      render_factor: int = 24):
+            """Shared-memory variant of ColorizeImageWithRetry."""
+            try:
+                img = self._shm_to_img(shm_in_name, height, width)
+                if self.render is None:
+                    log_warning(f"CMNET2 Render is not initialized, return original frame ti={ti}")
+                    self._img_to_shm(shm_out_name, height, width, img)
+                    return
+                img_colored = self.render.colorize_frame_with_retry(
+                    ti, img, retry_blend_weight, merge_engine_weight, render_factor)
+                self._img_to_shm(shm_out_name, height, width, img_colored)
+            except Exception as e:
+                log_warning(f"ColorizeImageWithRetryShm failed at ti={ti}: {type(e).__name__}: {e}")
+                raise
+
+        def PreloadReferenceShm(self, shm_name: str, height: int, width: int):
+            """Shared-memory variant of PreloadReference."""
+            if self.render is not None:
+                img = self._shm_to_img(shm_name, height, width)
+                self.render.preload_reference(img)
+                self._preload_counter += 1
+            else:
+                log_warning("CMNET2 Render is not initialized")
 
 
     def start_server(self):

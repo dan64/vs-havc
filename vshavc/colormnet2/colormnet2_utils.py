@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2025-09-28
 version:
 LastEditors: Dan64
-LastEditTime: 2026-04-25
+LastEditTime: 2026-05-23
 -------------------------------------------------------------------------------
 Description:
 -------------------------------------------------------------------------------
@@ -177,6 +177,161 @@ class PermMemWindow:
         self.next_ref_idx += 1
         self.ref_half_idx += 1
         self.activation_frame = self.reader.ref_num_list[self.ref_half_idx]
+
+class PermMemWindowDit:
+    """
+    Sliding permanent-memory window for CMNET2-DIT colorization.
+
+    Identical role to PermMemWindow, but designed for B&W reference frames:
+    each reference frame is colorized by HAVCditEngine *before* being loaded
+    into perm_mem.  Colorization always runs in pairs (colorize_image_pair())
+    because the DiT model processes two frames in a single forward pass,
+    roughly halving the per-image cost.  When only one reference frame remains
+    (end-of-clip edge case), colorize_image() is used instead.
+
+    Key differences from PermMemWindow
+    ------------------------------------
+    - window_size is always rounded down to the nearest even number (≥ 2).
+    - preload_initial() iterates reference frames 2 at a time and calls
+      colorize_image_pair() for each pair.
+    - adjust() slides by slide_step=2 (fixed) and loads the next colorized pair;
+      falls back to colorize_image() when only one reference frame remains.
+    - first_ref_colored caches the colorized version of ref[0] so that the
+      ModifyFrame callback can call set_ref_frame() on frame n=0 without
+      incurring a second colorization call.
+    """
+
+    def __init__(self, colorizer, reader: RefImageReader2, window_size: int, dit_engine):
+        """
+        Parameters
+        ----------
+        colorizer   : ColorMNetRender2 or ColorMNetClient2
+                      Object exposing preload_reference(), slide_permanent_memory(),
+                      set_ref_frame(), colorize_frame().
+        reader      : RefImageReader2
+                      Provides B&W reference images and the ordered ref_num_list.
+        window_size : int
+                      Desired sliding-window size.  Rounded down to the nearest
+                      even number then capped at reader.num_ref_imgs.
+        dit_engine  : HAVCditEngine
+                      Provides colorize_image_pair() and colorize_image().
+        """
+        self.colorizer  = colorizer
+        self.reader     = reader
+        self.dit_engine = dit_engine
+
+        # Force window_size to be even, then cap at the number of available refs.
+        ws_even = math.trunc(window_size / 2) * 2
+        self.window_size = min(ws_even, math.trunc(reader.num_ref_imgs / 2) * 2)
+        if self.window_size < 2:
+            HAVC_LogMessage(
+                MessageType.EXCEPTION,
+                "PermMemWindowDit: at least 2 reference frames are required "
+                f"for pair colorization, got num_ref_imgs={reader.num_ref_imgs}. "
+                "Increase ref_thresh or lower ref_freq to generate more scene-change frames."
+            )
+
+        # Slide step is always 2 (pair-aligned), unlike the percentage-based
+        # step used by PermMemWindow.
+        self.slide_step  = 2
+        self.ref_half_idx = max(0, round(self.window_size * (1 - DEF_FUTURE_FRAME_WEIGHT)) - 1)
+        self.next_ref_idx = 0
+        self.activation_frame  = None
+        # Cached colorized version of ref[0], set by preload_initial() so that
+        # the ModifyFrame callback can reuse it on frame n=0 at zero extra cost.
+        self.first_ref_colored = None
+
+    def preload_initial(self):
+        """
+        Colorize and load the first window_size B&W reference frames (in pairs)
+        into perm_mem before the colorization loop starts.
+
+        Since window_size is guaranteed even, the range always produces complete
+        pairs with no residue.
+        """
+        if self.next_ref_idx >= (self.window_size - 1):
+            return
+
+        count = 0
+        for i in range(self.next_ref_idx, self.window_size, 2):
+            img1 = self.reader.get_ref_image(i)
+            count += 1
+            img2 = self.reader.get_ref_image(i + 1)
+            count += 1
+            img1_col, img2_col = self.dit_engine.colorize_image_pair(img1, img2)
+            if i == 0:
+                # Cache colorized ref[0] for reuse in the n=0 ModifyFrame callback.
+                self.first_ref_colored = img1_col
+            self.colorizer.preload_reference(img1_col)
+            self.colorizer.preload_reference(img2_col)
+            if count >= DEF_XRF_MAX_WINDOW_SIZE:
+                break
+        self.next_ref_idx += count
+        self.activation_frame = self.reader.ref_num_list[self.ref_half_idx]
+
+    def adjust(self, frame_n: int):
+        """
+        Slide the permanent-memory window forward by 2 when frame_n passes
+        activation_frame.
+
+        On each activation:
+          1. Remove the 2 oldest reference frames from perm_mem.
+          2a. If at least 2 new references remain: colorize them as a pair
+              with colorize_image_pair() and preload both.
+          2b. If exactly 1 new reference remains: colorize it individually
+              with colorize_image() and preload it.
+          3. Advance next_ref_idx and ref_half_idx accordingly, then update
+             activation_frame to the next threshold.
+
+        The method is a no-op when:
+          - activation_frame is None (all refs exhausted), or
+          - frame_n has not yet reached the current activation_frame, or
+          - the reader has no further reference frames to supply.
+        """
+        if self.activation_frame is None:
+            return
+        if frame_n <= self.activation_frame:
+            return
+        # Ensure at least one more ref frame is available (may trigger lazy
+        # extension of the reader's internal buffer).
+        if not self.reader.extend_if_needed(self.next_ref_idx):
+            return   # Clip exhausted; no more refs to load.
+
+        if frame_n > DEF_XRF_HALF_WINDOW_SIZE:
+            self.preload_initial()   # if necessary continue the initial preload
+            # preload_initial() may have advanced next_ref_idx; re-check that
+            # the reader can cover the new position.
+            if not self.reader.extend_if_needed(self.next_ref_idx):
+                return
+
+        # --- Slide 2 frames out of perm_mem ---
+        self.colorizer.slide_permanent_memory(2)
+
+        # --- Load next pair or single frame ---
+        has_pair = self.reader.extend_if_needed(self.next_ref_idx + 1)
+        if has_pair:
+            img1 = self.reader.get_ref_image(self.next_ref_idx)
+            img2 = self.reader.get_ref_image(self.next_ref_idx + 1)
+            img1_col, img2_col = self.dit_engine.colorize_image_pair(img1, img2)
+            self.colorizer.preload_reference(img1_col)
+            self.colorizer.preload_reference(img2_col)
+            self.next_ref_idx  += 2
+            self.ref_half_idx   = min(self.ref_half_idx + 2, self.reader.num_ref_imgs - 1)
+        else:
+            # Edge case: only one B&W reference frame remains at end of clip.
+            img1 = self.reader.get_ref_image(self.next_ref_idx)
+            img1_col = self.dit_engine.colorize_image(img1)
+            self.colorizer.preload_reference(img1_col)
+            self.next_ref_idx  += 1
+            self.ref_half_idx   = min(self.ref_half_idx + 1, self.reader.num_ref_imgs - 1)
+
+        # --- Update next activation threshold ---
+        if self.ref_half_idx < self.reader.num_ref_imgs:
+            self.activation_frame = self.reader.ref_num_list[self.ref_half_idx]
+        else:
+            # No more thresholds: the window stays frozen until the clip ends.
+            self.activation_frame = None
+
 
 def image_to_byte_array(img: Image, img_format: str = "jpeg", img_quality: int = 95) -> bytes:
     # BytesIO is a file-like buffer stored in memory
