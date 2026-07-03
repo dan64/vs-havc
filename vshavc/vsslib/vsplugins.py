@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-10-09
 version: 
 LastEditors: Dan64
-LastEditTime: 2026-05-22
+LastEditTime: 2026-07-03
 ------------------------------------------------------------------------------- 
 Description:
 ------------------------------------------------------------------------------- 
@@ -39,7 +39,7 @@ def load_TCanny_plugin() -> bool:
     plugin_path = os.path.normpath(os.path.join(support_dir, "TCanny.dll"))
 
     try:
-        if hasattr(vs.core, 'tcanny') and hasattr(vs.core.akarin, 'TCanny'):
+        if hasattr(vs.core, 'tcanny') and hasattr(vs.core.tcanny, 'TCanny'):
             if DEF_DEBUG_LEVEL > DEF_LEVEL_NONE:
                 HAVC_LogMessage(MessageType.INFORMATION,f"[INFO] Plugin 'TCanny' already loaded.")
             return True

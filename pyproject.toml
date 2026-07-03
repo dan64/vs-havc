@@ -11,7 +11,7 @@ exclude = [
 
 [project]
 name = "vshavc"
-version = "5.8.5"
+version = "5.8.6"
 description = "HAVC functions for VapourSynth"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -59,7 +59,7 @@ import vshavc.remaster
 
 import vshavc.vsslib.constants as constants
 
-__version__ = "5.8.5"
+__version__ = "5.8.6"
 
 import warnings
 import logging
