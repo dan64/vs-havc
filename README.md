@@ -1,6 +1,6 @@
 # Hybrid Automatic Video Colorizer (aka HAVC)
 
-**Version 5.8.5**
+**Version 5.8.7**
 
 A Deep Learning based [VapourSynth](https://www.vapoursynth.com/) filter for colorizing and restoring old images and video, based on the following projects: [DeOldify](https://github.com/jantic/DeOldify)
 ,  [DDColor](https://github.com/HolyWu/vs-ddcolor), [Colorization](https://github.com/richzhang/colorization), [Deep Exemplar based Video Colorization](https://github.com/zhangmozhe/Deep-Exemplar-based-Video-Colorization), [DeepRemaster](https://github.com/satoshiiizuka/siggraphasia2019_remastering), [ColorMNet](https://github.com/yyang181/colormnet) and [CMNET2](https://github.com/dan64/cmnet2). The project  [Colorization](https://github.com/richzhang/colorization) includes 2 models: _Real-Time User-Guided Image Colorization with Learned Deep Priors_ (Zhang, 2017) and _Colorful Image Colorization_ (Zhang, 2016). These 2 models has been added as alternative models (named: _siggraph17_, _eccv16_) to DDColor.
@@ -12,6 +12,24 @@ For this filter is available a [User Guide](https://github.com/dan64/vs-havc/blo
 The filter (_HAVC_ in short) can be considered the _Swiss Army knife_ for coloring videos. It offers a wide range of options and coloring models and filters. It is able to combine the results provided by _DeOldify_ and _DDColor_ (_Colorization_), which are some of the best models available for coloring pictures, providing often a final colorized image that is better than the image obtained from the individual models. But the main strength of this filter is the addition of specialized filters to improve the quality of videos obtained by using these color models and the possibility to improve further the stability by using these models as input to [Deep Exemplar based Video Colorization](https://github.com/zhangmozhe/Deep-Exemplar-based-Video-Colorization) model (_DeepEx_ in short), [DeepRemaster](https://github.com/satoshiiizuka/siggraphasia2019_remastering), [ColorMNet](https://github.com/yyang181/colormnet) and the new **CMNET2** model.
 
 _DeepEx_, _DeepRemaster_, _ColorMNet_ and _[CMNET2](https://github.com/dan64/cmnet2)_ are exemplar-based video colorization models, which allow to colorize a movie starting from one or more external-colored reference images. They allow to colorize a Video in sequence based on the colorization history, enforcing its coherency by using a temporal consistency loss.
+
+## What's New in 5.8.7 : CMNET2 Proximity Bias/DINOv3 backbone
+
+The main addition of HAVC 5.8.7 are:
+
+1) CMNET2 can now optionally favor temporally closer reference frames when several permanent-memory candidates match a frame's content similarly well (the same
+situation described in [CMNET2 Memory Window](#cmnet2-memory-window) below), where a wide window holding visually similar but differently-colored references can wash
+the result toward gray. Unlike the other CMNET2 options on this page, it is **not** a Hybrid field or a filter parameter: it is set once for the whole installation via
+`models.json` (see [Model file names](#model-file-names-modelsjson) below), off by default. **DINOv3 only**, silently ignored for the legacy DINOv2 backbone. See
+[CMNET2 Proximity Bias](#cmnet2-proximity-bias) below and the [full explanation and a visual example](https://github.com/dan64/cmnet2#proximity-weighted-memory-matching-optional-dinov3-only) in the CMNET2 README.
+
+2) the support to the new **DINOv3 ViT-B/16** key-encoder backbone for all the CMNET2 based models: `HAVC_cmnet2()`, `HAVC_cmnet2dit()`, `HAVC_restore_video()` and `HAVC_deepex()` (with `ex_model=0`). The parameter is also exposed on the main entry point `HAVC_main()` as `DeepExBackbone` and propagated internally whenever CMNET2 is selected as the exemplar-based model (`DeepExModel=0`).
+
+The new backbone is the **default** (`backbone="dinov3"`) in `HAVC_cmnet2()`, `HAVC_cmnet2dit()`, `HAVC_restore_video()` and `HAVC_deepex()`; the previous DINOv2 ViT-S/14 backbone is still available by setting `backbone="dinov2"`. On the main entry point `HAVC_main()`, for backward compatibility, `DeepExBackbone` still defaults to `"dinov2"`; set `DeepExBackbone="dinov3"` to opt into the new backbone.
+
+The DINOv3 backbone is loaded by a native PyTorch implementation (no `transformers`, `huggingface_hub` or `tokenizers` dependency): the model is read from a local directory, self-contained like all the other weights of the project, never from the global HuggingFace cache.
+
+Requirements: the new DINOv3 weights must be installed (see [Models Download](#models-download) below) together with the [safetensors](https://github.com/huggingface/safetensors) package (already included in the wheel dependencies).
 
 ## What's New in 5.8.5 : CMNET2-DiT
 
@@ -69,6 +87,7 @@ To use the HAVC filter is necessary a GPU supporting CUDA, a NVIDIA RTX3060 is t
 - [PyTorch](https://pytorch.org/get-started) 2.1.1 or later
 - [VapourSynth](http://www.vapoursynth.com/) R62 or later
 - [MiscFilters.dll](https://github.com/vapoursynth/vs-miscfilters-obsolete) Vapoursynth's Miscellaneous Filters
+- [safetensors](https://github.com/huggingface/safetensors) 0.4 or later (used by the native DINOv3 backbone loader)
 
 ## Installation
 
@@ -94,6 +113,8 @@ in the Library packages folder: .\Lib\site-packages\
 
 The models are not installed with the package, they must be downloaded from the Deoldify website at: [completed-generator-weights](https://github.com/jantic/DeOldify#completed-generator-weights).
 
+> The complete layout of all the weight files is summarized in [Weights folders (summary)](#weights-folders-summary) at the end of this section.
+
 The models to download are:
 
 - ColorizeVideo_gen.pth
@@ -110,13 +131,53 @@ To use ColorMNet and [CMNET2](https://github.com/dan64/cmnet2) it is also necess
 
 A single copy is sufficient: [CMNET2](https://github.com/dan64/cmnet2) automatically locates and reuses the same file, so there is no need to duplicate it in the `colormnet2\weights` directory.
 
+### DINOv3 backbone (default)
+
+Starting from version 5.8.7 the CMNET2 based models use the **DINOv3 ViT-B/16** key-encoder backbone by default. Download these files from the [CMNET2 Releases](https://github.com/dan64/cmnet2/releases):
+
+| File | Destination | Download |
+|---|---|---|
+| `DINOv3FeatureV6_LocalAtten_p374099.pth` | `.\Lib\site-packages\vshavc\colormnet2\weights\` | [download](https://github.com/dan64/cmnet2/releases/download/v1.3.0/DINOv3FeatureV6_LocalAtten_p374099.pth) |
+| `dinov3-vitb16.zip` (extract to `vshavc\colormnet2\weights\`) | `.\Lib\site-packages\vshavc\colormnet2\weights\dinov3-vitb16\` | [download](https://github.com/dan64/cmnet2/releases/download/v1.1.0/dinov3-vitb16.zip) |
+
+These files are used by CMNET2 only and are looked up in `vshavc\colormnet2\weights\`; the DINOv2 checkpoint of ColorMNet (CMNET1) stays in `vshavc\colormnet\weights\` and is reused by CMNET2 when `backbone="dinov2"` is selected (see [Model file names](#model-file-names-modelsjson) below).
+
+> **Note:** the DINOv3 backbone is loaded by a native PyTorch implementation (`colormnet2/model/dinov3_vit.py`) from the local `dinov3-vitb16` directory: no `transformers` dependency and never from the global HuggingFace cache.
+
+To keep using the previous **DINOv2 ViT-S/14** backbone, set `backbone="dinov2"` in the filter functions; the DINOv2 weights already installed for CMNET2 continue to be used.
+
+### Model file names (`models.json`)
+
+The names of the checkpoints are not hardcoded in the code: they are stored in a single data file, `vshavc\vsslib\models.json`, shipped with the package:
+
+```json
+{
+  "cmnet2": {
+    "dinov3": {
+      "checkpoint": "DINOv3FeatureV6_LocalAtten_p374099.pth",
+      "weights_root": "colormnet2",
+      "weights_dir": "dinov3-vitb16",
+      "enable_proximity_bias": false,
+      "proximity_bias_alpha": 0.5
+    },
+    "dinov2": {
+      "checkpoint": "DINOv2FeatureV6_LocalAtten_s2_154000.pth"
+    }
+  }
+}
+```
+
+Normally there is no need to touch it. Edit it only if the checkpoint files have different names (custom or renamed weights), if the weights folders are different, or you want to change the default [proximity bias](#cmnet2-proximity-bias) settings: `checkpoint` is the file inside the weights directory of the backbone, `weights_root` is the package folder holding that weights directory (`colormnet2`: the DINOv3 files are CMNET2 only - it is missing in the `dinov2` entry because that checkpoint is shared with ColorMNet and stays in `vshavc\colormnet\weights\`), `weights_dir` is the auxiliary directory used by the DINOv3 backbone, and `enable_proximity_bias`/`proximity_bias_alpha` set the default for CMNET2's temporal-proximity-aware memory matching (DINOv3 only, ignored for DINOv2). When the configured file is missing, the filter stops immediately and the error lists the files actually present in the weights directory.
+
+If `models.json` is missing or malformed, the built-in default names (the ones listed above) are used.
+
 With the version 5.0 of HAVC has been added the model [DeepRemaster](https://github.com/satoshiiizuka/siggraphasia2019_remastering), for using it is necessary to download the file [remasternet.pth.tar](http://iizuka.cs.tsukuba.ac.jp/data/remasternet.pth.tar) (is not a tar, just a "pth" renamed as "pth.tar") and copy it in: ".\Lib\site-packages\vshavc\remaster\model".
 
 At the first usage it is possible that are automatically downloaded by torch the neural networks: **resnet101** and **resnet34**, and starting with the release 4.5.0:  **resnet50**, **resnet18**, **dinov2_vits14_pretrain** and the folder **facebookresearch_dinov2_main**
 
 So don't be worried if at the first usage the filter will be very slow to start, at the initialization are loaded almost all the _Fastai_ and _PyTorch_ modules and the resnet networks.
 
-It is possible specify the destination directory of networks used by torch, by using the function parameter **torch\_hub\_dir**, if this parameter is set to **None**, the files will be downloaded in the _torch's cache_ dir, more details are available at: [caching-logic](https://pytorch.org/docs/stable/hub.html#caching-logic).
+It is possible specify the destination directory of networks used by torch, by using the function parameter **torch\_dir**, if this parameter is set to **None**, the files will be downloaded in the _torch's cache_ dir, more details are available at: [caching-logic](https://pytorch.org/docs/stable/hub.html#caching-logic).
 
 The models used by **DDColor** can be installed with the command
 
@@ -127,6 +188,53 @@ python -m vsddcolor
 The models for **Deep-Exemplar based Video Colorization.** can be installed by downloading the file **colorization_checkpoint.zip** available in: [inference code](https://github.com/zhangmozhe/Deep-Exemplar-based-Video-Colorization/releases/tag/v1.0).
 
 The archive  **colorization_checkpoint.zip** have to be unziped in: .\Lib\site-packages\vshavc\deepex
+
+### Weights folders (summary)
+
+All the weight files present in an installation, in the directory tree of the `vshavc` package:
+
+```text
+.\Lib\site-packages\vshavc\
+├── models\                             DeOldify + torch hub dir (default of "torch_dir")
+│   ├── ColorizeVideo_gen.pth           DeOldify                  [manual download]
+│   ├── ColorizeStable_gen.pth          DeOldify                  [manual download]
+│   ├── ColorizeArtistic_gen.pth        DeOldify                  [manual download]
+│   ├── colorization_release_v2-9b330a0b.pth   Zhang ECCV16       [automatic, torch]
+│   ├── siggraph17-df00044c.pth                Zhang SIGGRAPH17   [automatic, torch]
+│   ├── checkpoints\                    torch hub cache, filled at the first run   [automatic, torch]
+│   │   ├── resnet18-5c106cde.pth       Fuse of ColorMNet/CMNET2
+│   │   ├── resnet50-19c8e357.pth       Fuse of ColorMNet/CMNET2
+│   │   ├── resnet101-63fe2227.pth      DeOldify (video, stable)
+│   │   └── dinov2_vits14_pretrain.pth  legacy DINOv2 backbone
+│   └── facebookresearch_dinov2_main\   legacy DINOv2 backbone (torch.hub repo)  [automatic, torch]
+├── colormnet\weights\
+│   └── DINOv2FeatureV6_LocalAtten_s2_154000.pth   ColorMNet (CMNET1), CMNET2 with backbone="dinov2"
+├── colormnet2\weights\
+│   ├── DINOv3FeatureV6_LocalAtten_p374099.pth     CMNET2 with backbone="dinov3" (default)
+│   └── dinov3-vitb16\
+│       ├── config.json
+│       └── model.safetensors
+├── deepex\                             DeepEx: unzip "colorization_checkpoint.zip" here
+│   ├── checkpoints\
+│   │   ├── video_moredata_l1\
+│   │   │   ├── colornet_iter_76000.pth
+│   │   │   ├── nonlocal_net_iter_76000.pth
+│   │   │   └── discriminator_iter_76000.pth    [present, not loaded]
+│   │   ├── resnet101-63fe2227.pth              [present, not loaded]
+│   │   ├── resnet50-19c8e357.pth               [present, not loaded]
+│   │   └── dinov2_vits14_pretrain.pth          [present, not loaded]
+│   └── data\
+│       ├── vgg19_conv.pth
+│       └── vgg19_gray.pth              loaded at import time (always required)
+└── remaster\model\
+    └── remasternet.pth.tar             DeepRemaster               [manual download]
+```
+
+- **Manual download**: the links are in the sections above (DeOldify, ColorMNet/CMNET2 DINOv2, [DINOv3 backbone](#dinov3-backbone-default), DeepRemaster, Deep-Exemplar).
+- **Automatic, torch**: downloaded by torch at the first run, inside the torch hub directory (the **torch\_dir** parameter, default `vshavc\models`); depending on the torch version the state dicts can be stored directly in `models\` or in its `checkpoints\` subfolder (in the tree above the two Zhang models are in `models\`, the resnets and DINOv2 in `checkpoints\`). With `torch_dir=None` the global _torch's cache_ dir is used instead; the `trusted_list` file that `torch.hub` creates in the same directory is not a weight.
+- **Present, not loaded**: files that are part of the DeepEx folder but are never read by the filter: `discriminator_iter_76000.pth` (training discriminator) and the copies of the resnet/DINOv2 weights in `deepex\checkpoints\` - the filter loads those from `models\checkpoints\`. They can be left where they are.
+- The DINOv2 checkpoint is shared: it is loaded by ColorMNet (CMNET1) and, from the same file, by CMNET2 when `backbone="dinov2"` is selected, even if CMNET2 lives in the `colormnet2` package folder (see [Model file names](#model-file-names-modelsjson)).
+- The models of **DDColor** are not stored here: DDColor is the separate `vsddcolor` package (installed as a dependency of HAVC) and its models are downloaded with the command `python -m vsddcolor`.
 
 ## Usage
 
@@ -387,9 +495,40 @@ If the selected DiT server is not reachable, the engine automatically falls back
 to model `0` (HAVC). See [HAVC_cmnet2dit.md](documentation/HAVC_cmnet2dit.md) for
 details on DiT setup.
 
+### CMNET2 Proximity Bias
+
+By default, CMNET2 ranks permanent-memory candidates purely by content similarity, with no notion of *when* in the video a reference frame was captured relative to the
+frame being colorized with a wide memory window (see [CMNET2 Memory Window](#cmnet2-memory-window) above) holding several visually similar
+but differently-colored references, this can wash the result toward gray. CMNET2 can optionally favor temporally closer references instead, without
+ever reducing the permanent memory’s overall contribution to the readout. Unlike the other options on this page, this is **not** a Hybrid field or a function
+parameter of `HAVC_main()`/`HAVC_cmnet2()`/`HAVC_cmnet2dit()` - it is configured once for the whole installation through the `enable_proximity_bias`/`proximity_bias_alpha`
+keys in `models.json` (see [Model file names](#model-file-names-modelsjson) above), off by default. 
+To permanently enable it (useful for permanent memory window size > 50) it is necessary to set `enable_proximity_bias=true` in the configuration 
+file stored in: `vsslib/models.json` as shown in the example below:
+
+```json
+{
+  "cmnet2": {
+    "dinov3": {
+      "checkpoint": "DINOv3FeatureV6_LocalAtten_p374099.pth",
+      "weights_root": "colormnet2",
+      "weights_dir": "dinov3-vitb16",
+      "enable_proximity_bias": true,
+      "proximity_bias_alpha": 0.5
+    },
+    "dinov2": {
+      "checkpoint": "DINOv2FeatureV6_LocalAtten_s2_154000.pth"
+    }
+  }
+}
+```
+
+**DINOv3 only**: the setting is silently ignored when `backbone="dinov2"`.
+See the [mechanism explanation and a visual example](https://github.com/dan64/cmnet2#proximity-weighted-memory-matching-optional-dinov3-only) in the CMNET2 README.
+
 ## HAVC_cmnet2dit : Self-contained DiT + CMNET2 Colorization
 
-> **Full documentation:** [documentation/HAVC_cmnet2dit.md](documentation/HAVC_cmnet2dit.md) —
+> **Full documentation:** [documentation/HAVC_cmnet2dit.md](documentation/HAVC_cmnet2dit.md) -
 > detailed guide with advanced usage examples, model configuration, and
 > troubleshooting tips.
 
@@ -421,7 +560,7 @@ with fp4/int4 quantization), halving the number of DiT forward passes. A
   server that loads the DiT model and exposes the colorization API. Must be
   installed and running before the VapourSynth script.
 - CUDA GPU with sufficient VRAM (RTX 50-Series: fp4, RTX 30/40-Series: int4).
-- CMNET2 model weights accessible at the package model directory.
+- CMNET2 model weights accessible at the package model directory (DINOv3 backbone by default, see [Models Download](#models-download)).
 
 ### Basic Usage
 

@@ -1,1 +1,49 @@
-dist
+# Distribution / build output
+dist/
+build/
+*.egg-info/
+
+# Python bytecode / build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE / editor
+.idea/
+.vscode/
+.codewhale/
+
+# Local debug / test output
+vs_test_debug/
+vs_test_debug_no-gpu/
+*.log
+
+# Test / lint caches
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local environment / secrets
+.env
+
+# Model weights (downloaded separately, never committed - see README)
+*.pth
+*.safetensors
+vshavc/colormnet/weights/*
+!vshavc/colormnet/weights/.gitkeep
+#vshavc/colormnet2/weights/*
+!vshavc/colormnet2/weights/.gitkeep
+!vshavc/colormnet2/weights/dinov3-vitb16/.gitkeep
+vshavc/models/checkpoints/*
+
+# DINOv2 source code kept out of the dev repo only (tracked in the production repo)
+vshavc/models/facebookresearch_dinov2_main/

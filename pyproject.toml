@@ -11,10 +11,10 @@ exclude = [
 
 [project]
 name = "vshavc"
-version = "5.8.6"
+version = "5.8.7"
 description = "HAVC functions for VapourSynth"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = {file = "LICENSE"}
 authors = [{name = "Dan64", email = "whitedan64@gmail.com"}]
 keywords = ["Deoldify", "VapourSynth"]
@@ -28,10 +28,13 @@ dependencies = [
   "numpy>=1.26.2",
   "vsddcolor>=1.0.0",
   "fastai==1.0.60",
-  "torch>=2.1.1",
+  "torch>=2.7.1",
+  "safetensors>=0.4.0",
   "pillow>=9.0.0",
-  "VapourSynth>=62",
-  "vstools>=2.1.0"
+  "vstools>=2.1.0",
+  "opencv-python>=4.0.0",
+  "scikit-image>=0.20.0",
+  "einops>=0.8",
 ]
 
 [project.urls]

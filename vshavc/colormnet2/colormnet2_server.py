@@ -62,7 +62,8 @@ class ColorMNetRPCServer2:
         def initialize(self, image_size: int = -1, vid_length: int = 1000, enable_resize: bool = False,
                        encode_mode: int = 0, propagate: bool = False, max_memory_frames: int = None,
                        reset_on_ref_update: bool = True, retry_mmsp_threshold: float = -1.0,
-                       retry_perm_share_threshold: float = 0.30, retry_model: int = 0):
+                       retry_perm_share_threshold: float = 0.30, retry_model: int = 0,
+                       backbone: str = "dinov3"):
 
             # Force a fresh render on reinitialization (e.g. VSEdit loop).
             # The render is a singleton and would otherwise keep stale state.
@@ -74,7 +75,7 @@ class ColorMNetRPCServer2:
                                            retry_mmsp_threshold=retry_mmsp_threshold,
                                            retry_perm_share_threshold=retry_perm_share_threshold,
                                            retry_model = retry_model,
-                                           project_dir=package_dir)
+                                           project_dir=package_dir, backbone=backbone)
 
 
         def SetRefImage(self, img_byte_array: bytes, frame_propagate: bool = False):
@@ -140,10 +141,10 @@ class ColorMNetRPCServer2:
             log_warning("CMNET2 Render is not initialized")
             return 0
 
-        def PreloadReference(self, img_byte_array: bytes):
+        def PreloadReference(self, img_byte_array: bytes, frame_idx: int = None):
             if self.render is not None:
                 img = byte_array_to_image(img_byte_array)
-                self.render.preload_reference(img)
+                self.render.preload_reference(img, frame_idx=frame_idx)
                 self._preload_counter += 1
             else:
                 log_warning("CMNET2 Render is not initialized")
@@ -269,11 +270,11 @@ class ColorMNetRPCServer2:
                 log_warning(f"ColorizeImageWithRetryShm failed at ti={ti}: {type(e).__name__}: {e}")
                 raise
 
-        def PreloadReferenceShm(self, shm_name: str, height: int, width: int):
+        def PreloadReferenceShm(self, shm_name: str, height: int, width: int, frame_idx: int = None):
             """Shared-memory variant of PreloadReference."""
             if self.render is not None:
                 img = self._shm_to_img(shm_name, height, width)
-                self.render.preload_reference(img)
+                self.render.preload_reference(img, frame_idx=frame_idx)
                 self._preload_counter += 1
             else:
                 log_warning("CMNET2 Render is not initialized")

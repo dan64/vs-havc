@@ -26,13 +26,14 @@ import numpy as np
 import math
 import vapoursynth as vs
 from vshavc.vsslib.constants import DEF_MAX_MEMORY_FRAMES
+from vshavc.vsslib.models_config import get_cmnet2_model, check_file
 
 from vshavc.colormnet2.dataset.range_transform import im_normalization, im_rgb2lab_normalization, ToTensor, RGB2Lab
 from vshavc.colormnet2.model.network import ColorMNet
 from vshavc.colormnet2.inference.inference_core import InferenceCore
 from vshavc.colormnet2.util.transforms import lab2rgb_transform_PIL
 from vshavc.vsslib.imfilters import image_weighted_merge
-from vshavc.colormnet2.colormnet2_logbuffer import log_warning as _buf_warning, log_debug as _buf_debug
+from vshavc.colormnet2.colormnet2_logbuffer import ServerLogBuffer, log_warning as _buf_warning, log_debug as _buf_debug
 from vshavc.vsslib.vsimage_engine import HAVCimageEngine
 from vshavc.vsslib.vsutils import MessageType, HAVC_LogMessage
 
@@ -44,6 +45,28 @@ os.environ["CUDA_MODULE_LOADING"] = "LAZY"
 os.environ["NUMEXPR_MAX_THREADS"] = "8"
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+# Package folders used to locate the weights: this module lives in
+# '<vshavc>\colormnet2', so _PACKAGE_DIR is the 'vshavc' package directory
+# and _MODULE_DIR is the CMNET2 package folder.
+_MODULE_DIR = path.dirname(path.realpath(__file__))
+_PACKAGE_DIR = path.dirname(_MODULE_DIR)
+
+
+def _cmnet2_weights_dir(project_dir: str, model_info: dict) -> str:
+    """Return the directory holding the weights of a CMNET2 backbone entry.
+
+    The DINOv3 backbone is used only by CMNET2, so its files live in the CMNET2
+    package weights directory (vshavc\\colormnet2\\weights): models.json names
+    that package folder with 'weights_root'. The DINOv2 checkpoint is shared
+    with CMNET1/ColorMNet instead and lives in vshavc\\colormnet\\weights, that
+    is 'project_dir': the callers remap the 'colormnet2' folder name to
+    'colormnet' for that reason (see colormnet2/__init__.py and
+    colormnet2_server.py). An entry without 'weights_root' keeps that default.
+    """
+    if model_info.get('weights_root'):
+        return path.join(_PACKAGE_DIR, model_info['weights_root'], 'weights')
+    return path.join(project_dir, 'weights')
 
 
 class ColorMNetRender2:
@@ -77,11 +100,25 @@ class ColorMNetRender2:
                  encode_mode: int = None, propagate: bool = False, max_memory_frames: int = None,
                  reset_on_ref_update: bool = True, top_k: int = 30, mem_every: int = 5,
                  retry_mmsp_threshold: float = -1.0, retry_perm_share_threshold: float = 0.25,
-                 retry_model: int = 0, project_dir: str = None):
+                 retry_model: int = 0, project_dir: str = None, backbone: str = "dinov3",
+                 enable_proximity_bias: bool = None, proximity_bias_alpha: float = None):
 
+        if backbone not in ("dinov2", "dinov3"):
+            raise ValueError(f"unknown backbone: {backbone!r} (allowed values: 'dinov2', 'dinov3')")
+        self.backbone = backbone
         self.reset_on_ref_update = reset_on_ref_update  # deprecated with XMem2
         self.top_k = top_k
         self.mem_every = mem_every
+        # proximity bias: additive-under-softmax penalty on perm_mem_similarity
+        # favoring temporally close reference frames. Both
+        # enable_proximity_bias/proximity_bias_alpha default to None here (not
+        # passed explicitly) so _colorize_config_init() can tell that apart
+        # from a deliberate value and fall back to vsslib/models.json/DEFAULTS
+        # - same precedence for both: constructor > models.json > hardcoded
+        # fallback (False/0.5). Not exposed through the public HAVC_*/vs_*
+        # API/RPC layer by design - configurable only via models.json.
+        self.enable_proximity_bias = enable_proximity_bias
+        self.proximity_bias_alpha = proximity_bias_alpha
         self.enable_resize = enable_resize
         # Edge-triggered state for VRAM reset warnings:
         # we log only on the False -> True transition to avoid spamming
@@ -117,6 +154,7 @@ class ColorMNetRender2:
 
         if not self._initialized:
             self._colorize_model_init(vid_length)
+            self._flush_log_buffer()
             self._initialized = True
 
     def _colorize_config_init(self, image_size: int = -1, vid_length: int = 100, propagate: bool = False):
@@ -129,8 +167,18 @@ class ColorMNetRender2:
         torch.autograd.set_grad_enabled(False)
 
         self.config = {}
-        # model checkpoint location
-        self.config['model'] = path.join(self.project_dir, 'weights/DINOv2FeatureV6_LocalAtten_s2_154000.pth')
+        self.config['backbone'] = self.backbone
+        # model checkpoint location (depends on the selected backbone; the file
+        # names / auxiliary directories come from vsslib/models.json, the
+        # weights directory itself may be backbone specific: see
+        # _cmnet2_weights_dir())
+        model_info = get_cmnet2_model(self.backbone)
+        weights_dir = _cmnet2_weights_dir(self.project_dir, model_info)
+        self.config['model'] = check_file(
+            path.join(weights_dir, model_info['checkpoint']),
+            f"CMNET2 checkpoint (backbone='{self.backbone}')")
+        if model_info.get('weights_dir'):
+            self.config['dinov3_weights_dir'] = path.join(weights_dir, model_info['weights_dir'])
         # Whether the provided reference frame is exactly the first input frame
         self.config['FirstFrameIsNotExemplar'] = not propagate
         # dataset setting
@@ -146,6 +194,20 @@ class ColorMNetRender2:
         self.config['top_k'] = self.top_k
         self.config['mem_every'] = min(self.mem_every, self.config[
             'max_mid_term_frames'])  # r in paper. Increase to improve running speed
+        # precedence: explicit constructor value > vsslib/models.json > hardcoded
+        # fallback - not an implicit merge, kept as two explicit "was it passed
+        # at all" checks. model_info.get(..., default) also covers the 'dinov2'
+        # entry, which deliberately has no enable_proximity_bias/
+        # proximity_bias_alpha keys (see vsslib/models.json) - the bias stays
+        # dinov3-specific.
+        if self.enable_proximity_bias is None:
+            self.enable_proximity_bias = model_info.get('enable_proximity_bias', False)
+        if self.backbone != 'dinov3':
+            self.enable_proximity_bias = False
+        if self.proximity_bias_alpha is None:
+            self.proximity_bias_alpha = model_info.get('proximity_bias_alpha', 0.5)
+        self.config['enable_proximity_bias'] = self.enable_proximity_bias
+        self.config['proximity_bias_alpha'] = self.proximity_bias_alpha
         self.config['deep_update_every'] = -1  # Leave -1 normally to synchronize with mem_every
         # Multi-scale options
         self.config['save_scores'] = False
@@ -234,10 +296,39 @@ class ColorMNetRender2:
             # promotion done for the RPC route.
             HAVC_LogMessage(MessageType.WARNING, f"[DEBUG] {msg}")
 
-    def preload_reference(self, ref_img: Image):
+    def _flush_log_buffer(self) -> None:
+        """Flush messages queued in the shared log buffer during the build.
+
+        Remote (encode_mode=0): nothing to do here - the RPC client drains
+        the buffer and forwards the messages to the VS log.
+        Local (encode_mode!=0): the render lives inside the VS process, so
+        the buffered messages (e.g. the load_weights report) would otherwise
+        never be drained; forward them to the VS log directly, with the same
+        level mapping used by the client-side drain.
+        """
+        if self.encode_mode == 0:
+            return
+        for item in ServerLogBuffer().drain():
+            if not item or len(item) < 2:
+                continue
+            level, text = item[0], item[1]
+            try:
+                mt = MessageType(int(level))
+            except ValueError:
+                mt = MessageType.INFORMATION
+            if mt == MessageType.EXCEPTION:
+                mt = MessageType.CRITICAL
+            if mt in (MessageType.DEBUG, MessageType.INFORMATION):
+                mt = MessageType.WARNING
+            HAVC_LogMessage(mt, text)
+
+    def preload_reference(self, ref_img: Image, frame_idx: int = None):
         """
         Preloads a reference frame into perm_mem before starting colorization.
         Can be called N times consecutively.
+        frame_idx: source frame index of this reference, used by the
+            optional proximity bias. None (default) skips proximity-bias
+            tracking for this frame.
         """
         if self.processor is None:
             return
@@ -250,7 +341,7 @@ class ColorMNetRender2:
         if self.processor.all_labels is None:
             self.processor.set_all_labels(list(range(1, 3)))
 
-        self.processor.load_reference(img_lll, img_ab)
+        self.processor.load_reference(img_lll, img_ab, frame_idx=frame_idx)
         # Free memory cache
         torch.cuda.empty_cache()
 

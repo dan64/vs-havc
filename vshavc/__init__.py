@@ -4,7 +4,7 @@ Author: Dan64
 Date: 2024-02-29
 version: 
 LastEditors: Dan64
-LastEditTime: 2026-05-24
+LastEditTime: 2026-09-15
 ------------------------------------------------------------------------------- 
 Description:
 ------------------------------------------------------------------------------- 
@@ -59,7 +59,7 @@ import vshavc.remaster
 
 import vshavc.vsslib.constants as constants
 
-__version__ = "5.8.6"
+__version__ = "5.8.7"
 
 import warnings
 import logging
@@ -107,7 +107,7 @@ def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0, 
               ScFrameDir: str = None, ScThreshold: float = constants.DEF_THRESHOLD, ScThtOffset: int = 1, ScMinFreq: int = 15,
               ScMinInt: int = 1, ScThtSSIM: float = 0.0, ScNormalize: bool = False, DeepExModel: int = 0,
               DeepExVivid: bool = False, DeepExEncMode: int = 0, DeepExMaxMemFrames=20, RefRange: tuple[int, int] = (0, 0),
-              enable_fp16: bool = True, debug_level: int = 0) -> vs.VideoNode:
+              DeepExBackbone: str = "dinov2", enable_fp16: bool = True, debug_level: int = 0) -> vs.VideoNode:
     """Main HAVC function supporting the Presets
 
     :param clip:                clip to process, any format is supported.
@@ -307,6 +307,10 @@ def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0, 
                                 provide the frame number of clip start and end. For example RefRange=(100, 500)
                                 will return the clip's slice: clip[100:500], if RefRange=(0, 0) will be considered all
                                 clip's frames.
+    :param DeepExBackbone:      Key-encoder backbone used by CMNET2 (DeepExModel=0), allowed values are:
+                                    'dinov2' : legacy backbone (torch.hub) (default, for compatibility)
+                                    'dinov3' : native PyTorch implementation, requires the dinov3 weights in the
+                                               local weights dir
     :param enable_fp16:         Enable/disable FP16 in ddcolor inference, range [True, False]. Default = True
     :param debug_level:         Set the level of HAVC debug messages. Default = 0 (no messages)
     """
@@ -317,12 +321,12 @@ def HAVC_main(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: int = 0, 
 
     # Select presets / tuning
     # speed_id, deoldify_rf, ddcolor_rf = havc_utils._get_render_factors(Preset)
-    
+
     return HAVC_main_presets(clip, Preset, FrameInterp, ColorModel, CombMethod, VideoTune, ColorFix,
                ColorTune, ColorMap, ColorTemp, BlackWhiteTune, BlackWhiteMode, BlackWhiteBlend, EnableDeepEx,
                DeepExMethod, DeepExPreset, DeepExRefMerge, DeepExOnlyRefFrames, ScFrameDir, ScThreshold, ScThtOffset,
                ScMinFreq, ScMinInt, ScThtSSIM, ScNormalize, DeepExModel, DeepExVivid, DeepExEncMode, DeepExMaxMemFrames,
-               RefRange, enable_fp16, debug_level)
+               RefRange, DeepExBackbone, enable_fp16, debug_level)
 
 """
 ------------------------------------------------------------------------------- 
@@ -477,7 +481,7 @@ def HAVC_main_presets(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: i
                   ScThreshold: float = constants.DEF_THRESHOLD, ScThtOffset: int = 1, ScMinFreq: int = 0,
                   ScMinInt: int = 1, ScThtSSIM: float = 0.0, ScNormalize: bool = False, DeepExModel: int = 0,
                   DeepExVivid: bool = False, DeepExEncMode: int = 0, DeepExMaxMemFrames=0,
-                  RefRange: tuple[int, int] = (0, 0),
+                  RefRange: tuple[int, int] = (0, 0), DeepExBackbone: str = "dinov2",
                   enable_fp16: bool = True, debug_level: int = 0) -> vs.VideoNode:
     """
     HAVC function supporting Presets: 'Slower', 'Slow', 'Medium', 'Fast', 'Faster', 'VeryFast'
@@ -508,7 +512,8 @@ def HAVC_main_presets(clip: vs.VideoNode, Preset: str = 'Medium', FrameInterp: i
     clip_colored = HAVC_main_colorizer(clip, Preset, ColorModel, CombMethod,  VideoTune, ColorFix, ColorTemp,
               ColorTune, ColorMap, EnableDeepEx, DeepExMethod, DeepExPreset, DeepExRefMerge, DeepExOnlyRefFrames,
               ScFrameDir, ScThreshold, ScThtOffset, ScMinFreq, ScMinInt, ScThtSSIM, ScNormalize, DeepExModel,
-              DeepExVivid, DeepExEncMode, DeepExMaxMemFrames, FrameInterp, RefRange, enable_fp16, debug_level)
+              DeepExVivid, DeepExEncMode, DeepExMaxMemFrames, FrameInterp, RefRange, DeepExBackbone, enable_fp16,
+              debug_level)
 
     if BWTuneRetinex:
         clip_colored = HAVC_tweak(clip_colored, hue=5.0, sat=0.95, bright=0, cont=0.98, gamma=0.98)
@@ -541,7 +546,8 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
               DeepExOnlyRefFrames: bool = False, ScFrameDir: str = None, ScThreshold: float = constants.DEF_THRESHOLD,
               ScThtOffset: int = 1, ScMinFreq: int = 0, ScMinInt: int = 1, ScThtSSIM: float = 0.0,
               ScNormalize: bool = False, DeepExModel: int = 0, DeepExVivid: bool = False, DeepExEncMode: int = 0,
-              DeepExMaxMemFrames=0, FrameInterp: int = 0, RefRange: tuple[int, int] = (0, 0), enable_fp16: bool = True,
+              DeepExMaxMemFrames=0, FrameInterp: int = 0, RefRange: tuple[int, int] = (0, 0),
+              DeepExBackbone: str = "dinov2", enable_fp16: bool = True,
               debug_level: int = 0) -> vs.VideoNode:
     """Main HAVC function supporting the Presets
 
@@ -742,6 +748,10 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
                                 provide the frame number of clip start and end. For example RefRange=(100, 500)
                                 will return the clip's slice: clip[100:500], if RefRange=(0, 0) will be considered all
                                 clip's frames.
+    :param DeepExBackbone:      Key-encoder backbone used by CMNET2 (DeepExModel=0), allowed values are:
+                                    'dinov2' : legacy backbone (torch.hub) (default, for compatibility)
+                                    'dinov3' : native PyTorch implementation, requires the dinov3 weights in the
+                                               local weights dir
     :param enable_fp16:         Enable/disable FP16 in ddcolor inference, range [True, False]. Default = True
     :param debug_level:         Set the level of HAVC debug messages. Default = 0 (no messages)
     """
@@ -817,7 +827,8 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
             clip_colored = HAVC_restore_video(clip, clip_ref, render_speed=DeepExPreset, ex_model=DeepExModel,
                                               ref_merge=DeepExRefMerge, ref_thresh=ref_tresh, ref_freq=ref_freq,
                                               max_memory_frames=DeepExMaxMemFrames, render_vivid=DeepExVivid,
-                                              encode_mode=DeepExEncMode, ref_norm=ScNormalize)
+                                              encode_mode=DeepExEncMode, ref_norm=ScNormalize,
+                                              backbone=DeepExBackbone)
 
         else: # HAVC method in (0, 1, 2, DEF_HAVC_METHOD_PLACEBO)
 
@@ -847,7 +858,8 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
                                        only_ref_frames=DeepExOnlyRefFrames, dark=True, dark_p=[0.2, 0.8],
                                        ref_thresh=ref_tresh, ex_model=DeepExModel, encode_mode=DeepExEncMode,
                                        max_memory_frames=DeepExMaxMemFrames, ref_freq=ScMinFreq, ref_norm=ScNormalize,
-                                       smooth=True, smooth_p=[0.3, 0.7, 0.9, 0.0, "none"], colormap=chroma_adjust)
+                                       smooth=True, smooth_p=[0.3, 0.7, 0.9, 0.0, "none"], colormap=chroma_adjust,
+                                       backbone=DeepExBackbone)
             else:
                 clip_colored = clip_ref
 
@@ -862,7 +874,7 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
             clip_colored = HAVC_cmnet2(clip, clip_ref=None, method=DeepExMethod, render_speed=DeepExPreset,
                 render_vivid=DeepExVivid, ref_merge=0, sc_framedir=ScFrameDir, ref_norm=False, dark=False,
                 smooth=False, colormap=chroma_adjust, ref_weight=None, ref_thresh=None, ref_freq=None,
-                encode_mode=DeepExEncMode, max_memory_frames=DeepExMaxMemFrames)
+                encode_mode=DeepExEncMode, max_memory_frames=DeepExMaxMemFrames, backbone=DeepExBackbone)
         elif DeepExModel == 2:
             # call to faster version of DeepRemaster that read directly the images folder (ref_mode=0)
             clip_colored = HAVC_DeepRemaster(clip, render_vivid=DeepExVivid, ref_dir=ScFrameDir,
@@ -875,7 +887,7 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
                                        only_ref_frames=DeepExOnlyRefFrames, dark=True, dark_p=[0.2, 0.8],
                                        smooth=True, smooth_p=[0.3, 0.7, 0.9, 0.0, "none"], ex_model=DeepExModel,
                                        encode_mode=DeepExEncMode, max_memory_frames=DeepExMaxMemFrames,
-                                       colormap=chroma_adjust)
+                                       colormap=chroma_adjust, backbone=DeepExBackbone)
 
     else:  # No DeepEx -> HAVC classic
 
@@ -918,7 +930,8 @@ def HAVC_main_colorizer(clip: vs.VideoNode, Preset: str = 'Medium', ColorModel: 
             clip_colored = HAVC_cmnet2(clip=clip, clip_ref=clip_colored, render_speed='Medium', render_vivid=False,
                                    ref_merge=color_temp, dark=True, dark_p=[0.2, 0.8], ref_thresh=0.10,
                                    encode_mode=0, max_memory_frames=1, ref_freq=0, ref_norm=True, smooth=True,
-                                   smooth_p=[0.3, 0.7, 0.9, 0.0, "none"], colormap=chroma_adjust)
+                                   smooth_p=[0.3, 0.7, 0.9, 0.0, "none"], colormap=chroma_adjust,
+                                   backbone=DeepExBackbone)
 
         if speed_id > 4:  # 'fast', 'faster', 'veryfast' -> is used only colormap
             clip_colored = HAVC_stabilizer(clip_colored, colormap=chroma_adjust)
@@ -1453,7 +1466,7 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                 smooth_p: list = (0.3, 0.7, 0.9, 0.0, "none"), colormap: str = "none", ref_weight: float = None,
                 ref_thresh: float = None, ref_freq: int = None, ex_model: int = 0, encode_mode: int = 0,
                 max_memory_frames: int = 0, retry_threshold: float = 0, retry_model: int = 0,
-                high_resolution: bool = False, torch_dir: str = model_dir) -> vs.VideoNode:
+                high_resolution: bool = False, torch_dir: str = model_dir, backbone: str = "dinov3") -> vs.VideoNode:
     """Towards Video-Realistic Colorization via Exemplar-based framework
 
     :param clip:                Clip to process, any format is supported
@@ -1573,6 +1586,8 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                                 accuracy, but the inference will be about 2x slower. default = False.
     :param torch_dir:           torch hub dir location, default is model directory, if set to None will switch
                                 to torch cache dir
+    :param backbone:            Key-encoder backbone: 'dinov3' (default, native PyTorch implementation,
+                                requires the dinov3 weights in the local weights dir) or 'dinov2'.
     """
     # disable packages warnings
     disable_warnings()
@@ -1749,7 +1764,8 @@ def HAVC_deepex(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                 clip_colored = vs_colormnet2(clip, clip_ref, clip_sc, image_size=-1, enable_resize=enable_resize,
                                             encode_mode=encode_mode, max_memory_frames=max_memory_frames,
                                             frame_propagate=ref_same_as_video, render_vivid=render_vivid,
-                                            ref_weight=ref_weight, retry_perm_share_threshold=retry_threshold, retry_model=retry_model)
+                                            ref_weight=ref_weight, retry_perm_share_threshold=retry_threshold, retry_model=retry_model,
+                                            backbone=backbone)
             case 1:  # Deep-Exemplar
                 clip_colored = vs_deepex(clip, clip_ref, clip_sc, image_size=d_size, enable_resize=enable_resize,
                                          propagate=ref_same_as_video, wls_filter_on=True, render_vivid=render_vivid,
@@ -1785,7 +1801,7 @@ def HAVC_cmnet2(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                 dark_p: list = (0.2, 0.8), smooth: bool = False, smooth_p: list = (0.3, 0.7, 0.9, 0.0, "none"),
                 colormap: str = "none", ref_weight: float = None, ref_thresh: float = None, ref_freq: int = None,
                 encode_mode: int = 0, max_memory_frames: int = 0, ref_mode: int = 1, retry_threshold: float = 0.0,
-                retry_model: int = 0, torch_dir: str = model_dir) -> vs.VideoNode:
+                retry_model: int = 0, torch_dir: str = model_dir, backbone: str = "dinov3") -> vs.VideoNode:
     """CMNET2 colorization filter
 
     :param clip:                Clip to process, any clip format is supported
@@ -1887,6 +1903,8 @@ def HAVC_cmnet2(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                                 (Model HAVC). Range [0, 1, 2], default = 0
     :param torch_dir:           torch hub dir location, default is model directory, if set to None will switch
                                 to torch cache dir
+    :param backbone:            Key-encoder backbone: 'dinov3' (default, native PyTorch implementation,
+                                requires the dinov3 weights in the local weights dir) or 'dinov2'.
     """
     # disable packages warnings
     disable_warnings()
@@ -1907,6 +1925,10 @@ def HAVC_cmnet2(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
 
     if ref_merge not in range(6):
         HAVC_LogMessage(MessageType.EXCEPTION, "HAVC_cmnet2: ref_merge must be in range [0-5]")
+
+    if method in (1, 2, 3, 4) and (sc_framedir is None):
+        HAVC_LogMessage(MessageType.EXCEPTION,
+                        "HAVC_cmnet2: method in (1, 2, 3, 4) but sc_framedir is unset")
 
     sc_threshold = None
     sc_frequency = None
@@ -2042,7 +2064,8 @@ def HAVC_cmnet2(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None, method
                                             encode_mode=encode_mode, max_memory_frames=max_memory_frames,
                                             frame_propagate=ref_same_as_video, render_vivid=render_vivid,
                                             ref_weight=ref_weight, sc_framedir=sc_framedir if use_dir_refs else None,
-                                            retry_perm_share_threshold=retry_threshold, retry_model=retry_model)
+                                            retry_perm_share_threshold=retry_threshold, retry_model=retry_model,
+                                            backbone=backbone)
 
     clip_resized = clip_colored.resize.Spline36(width=clip_orig.width, height=clip_orig.height)
 
@@ -2064,7 +2087,7 @@ def HAVC_cmnet2dit(clip: vs.VideoNode = None,
                    dit_engine_params: dict = None,
                    retry_threshold: float = 0.0,
                    retry_model: int = 1,
-                   torch_dir: str = model_dir) -> vs.VideoNode:
+                   torch_dir: str = model_dir, backbone: str = "dinov3") -> vs.VideoNode:
     """CMNET2-DIT colorization filter.
 
     Like HAVC_cmnet2() but designed for B&W reference frames: scene-change
@@ -2131,6 +2154,8 @@ def HAVC_cmnet2dit(clip: vs.VideoNode = None,
     :param torch_dir:           Torch hub directory for CMNET2 model weights.
                                 Default: package model directory.
                                 Pass None to use the Torch cache directory.
+    :param backbone:            Key-encoder backbone: 'dinov3' (default, native PyTorch implementation,
+                                requires the dinov3 weights in the local weights dir) or 'dinov2'.
     :return:                    Colorized clip in the same format as the input.
     """
 
@@ -2196,6 +2221,7 @@ def HAVC_cmnet2dit(clip: vs.VideoNode = None,
         render_vivid=render_vivid,
         retry_perm_share_threshold=retry_threshold,
         retry_model=retry_model,
+        backbone=backbone,
     )
 
     # -----------------------------------------------------------------------
@@ -2434,7 +2460,7 @@ def HAVC_restore_video(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None,
                        render_speed: str = 'auto', ex_model: int = 0, ref_merge: int = 0, ref_weight: float = None,
                        ref_thresh: float = None, ref_freq: int = None, ref_norm: bool = False,
                        max_memory_frames: int = 0, render_vivid: bool = False, encode_mode: int = 0,
-                       retry_threshold: float = 0, retry_model: int = 0, torch_dir: str = model_dir) -> vs.VideoNode:
+                       retry_threshold: float = 0, retry_model: int = 0, torch_dir: str = model_dir, backbone: str = "dinov3") -> vs.VideoNode:
     """Colorization Function using DeepRemaster/ColorMNet to restore external video provided externally in clip_ref
 
     :param clip:                Clip to process, any format is supported
@@ -2522,6 +2548,8 @@ def HAVC_restore_video(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None,
                                 (Model HAVC). Range [0, 1, 2], default = 0
     :param torch_dir:           torch hub dir location, default is model directory, if set to None will switch
                                 to torch cache dir
+    :param backbone:            Key-encoder backbone: 'dinov3' (default, native PyTorch implementation,
+                                requires the dinov3 weights in the local weights dir) or 'dinov2'.
     """
     # disable packages warnings
     disable_warnings()
@@ -2586,7 +2614,8 @@ def HAVC_restore_video(clip: vs.VideoNode = None, clip_ref: vs.VideoNode = None,
             clip_colored = vs_colormnet2(clip, clip_ref, clip_sc, image_size=-1, enable_resize=enable_resize,
                                          encode_mode=encode_mode, max_memory_frames=max_memory_frames,
                                          frame_propagate=ref_same_as_video, render_vivid=render_vivid,
-                                         ref_weight=ref_weight,  retry_perm_share_threshold=retry_threshold, retry_model=retry_model)
+                                         ref_weight=ref_weight,  retry_perm_share_threshold=retry_threshold, retry_model=retry_model,
+                                         backbone=backbone)
         case 1:  # Deep-Exemplar
             clip_colored = vs_deepex(clip, clip_ref, clip_sc, image_size=d_size, enable_resize=enable_resize,
                                      propagate=ref_same_as_video, wls_filter_on=True, render_vivid=render_vivid,

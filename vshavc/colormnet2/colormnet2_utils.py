@@ -159,7 +159,7 @@ class PermMemWindow:
     def preload_initial(self):
         """Load the first window_size reference images into permanent memory before the colorization loop."""
         for i in range(self.window_size):
-            self.colorizer.preload_reference(self.reader.get_ref_image(i))
+            self.colorizer.preload_reference(self.reader.get_ref_image(i), frame_idx=self.reader.ref_num_list[i])
         self.next_ref_idx = self.window_size
         self.activation_frame = self.reader.ref_num_list[self.ref_half_idx]
 
@@ -173,7 +173,7 @@ class PermMemWindow:
             if not self.reader.extend_if_needed(self.next_ref_idx):
                 return
         self.colorizer.slide_permanent_memory(1)
-        self.colorizer.preload_reference(self.reader.get_ref_image(self.next_ref_idx))
+        self.colorizer.preload_reference(self.reader.get_ref_image(self.next_ref_idx), frame_idx=self.reader.ref_num_list[self.next_ref_idx])
         self.next_ref_idx += 1
         self.ref_half_idx += 1
         self.activation_frame = self.reader.ref_num_list[self.ref_half_idx]
@@ -262,8 +262,8 @@ class PermMemWindowDit:
             if i == 0:
                 # Cache colorized ref[0] for reuse in the n=0 ModifyFrame callback.
                 self.first_ref_colored = img1_col
-            self.colorizer.preload_reference(img1_col)
-            self.colorizer.preload_reference(img2_col)
+            self.colorizer.preload_reference(img1_col, frame_idx=self.reader.ref_num_list[i])
+            self.colorizer.preload_reference(img2_col, frame_idx=self.reader.ref_num_list[i + 1])
             if count >= DEF_XRF_MAX_WINDOW_SIZE:
                 break
         self.next_ref_idx += count
@@ -313,15 +313,15 @@ class PermMemWindowDit:
             img1 = self.reader.get_ref_image(self.next_ref_idx)
             img2 = self.reader.get_ref_image(self.next_ref_idx + 1)
             img1_col, img2_col = self.dit_engine.colorize_image_pair(img1, img2)
-            self.colorizer.preload_reference(img1_col)
-            self.colorizer.preload_reference(img2_col)
+            self.colorizer.preload_reference(img1_col, frame_idx=self.reader.ref_num_list[self.next_ref_idx])
+            self.colorizer.preload_reference(img2_col, frame_idx=self.reader.ref_num_list[self.next_ref_idx + 1])
             self.next_ref_idx  += 2
             self.ref_half_idx   = min(self.ref_half_idx + 2, self.reader.num_ref_imgs - 1)
         else:
             # Edge case: only one B&W reference frame remains at end of clip.
             img1 = self.reader.get_ref_image(self.next_ref_idx)
             img1_col = self.dit_engine.colorize_image(img1)
-            self.colorizer.preload_reference(img1_col)
+            self.colorizer.preload_reference(img1_col, frame_idx=self.reader.ref_num_list[self.next_ref_idx])
             self.next_ref_idx  += 1
             self.ref_half_idx   = min(self.ref_half_idx + 1, self.reader.num_ref_imgs - 1)
 

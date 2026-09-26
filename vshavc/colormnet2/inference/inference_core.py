@@ -55,12 +55,15 @@ class InferenceCore:
         # self.all_labels = [l.item() for l in all_labels]
         self.all_labels = all_labels
 
-    def load_reference(self, ref_lll, ref_ab):
+    def load_reference(self, ref_lll, ref_ab, frame_idx: int = None):
         """
         Loads a reference frame into perm_mem without colorizing anything.
         Can be called N times before starting colorization.
         ref_lll: L channel replicated 3 times (3*H*W) of the reference frame
         ref_ab:  ab channels (2*H*W) of the reference frame
+        frame_idx: source frame index of this reference, used by the
+            optional proximity bias in MemoryManager.match_memory().
+            None (default) skips proximity-bias tracking for this frame.
         """
         divide_by = 112
         ref_lll, pad = pad_divide_by(ref_lll, divide_by)
@@ -77,7 +80,7 @@ class InferenceCore:
             ref_lll, f16, self.memory.get_hidden(),
             ref_ab.unsqueeze(0), is_deep_update=False)
 
-        self.memory.add_permanent_memory(key, shrinkage, value, self.all_labels)
+        self.memory.add_permanent_memory(key, shrinkage, value, self.all_labels, frame_idx=frame_idx)
 
     def step(self, image, mask=None, valid_labels=None, end=False):
         # image: 3*H*W
@@ -203,7 +206,7 @@ class InferenceCore:
                 self.last_ti_value = value_mask
 
                 self.memory.add_permanent_memory(
-                    key_mask, shrinkage_mask, value_mask, self.all_labels
+                    key_mask, shrinkage_mask, value_mask, self.all_labels, frame_idx=self.curr_ti
                 )
             except:
                 pass
@@ -214,9 +217,9 @@ class InferenceCore:
 
         # segment the current frame is needed
         if need_segment:
-            memory_readout = self.memory.match_memory(key, selection).unsqueeze(0)
+            memory_readout = self.memory.match_memory(key, selection, query_frame_idx=self.curr_ti).unsqueeze(0)
 
-            # short term memory 
+            # short term memory
             batch, num_objects, value_dim, h, w = self.last_ti_value.shape
             last_ti_value = self.last_ti_value.flatten(start_dim=1, end_dim=2)
 

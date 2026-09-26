@@ -1,0 +1,14 @@
+{
+  "cmnet2": {
+    "dinov3": {
+      "checkpoint": "DINOv3FeatureV6_LocalAtten_p374099.pth",
+      "weights_root": "colormnet2",
+      "weights_dir": "dinov3-vitb16",
+      "enable_proximity_bias": false,
+      "proximity_bias_alpha": 0.5
+    },
+    "dinov2": {
+      "checkpoint": "DINOv2FeatureV6_LocalAtten_s2_154000.pth"
+    }
+  }
+}

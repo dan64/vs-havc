@@ -36,7 +36,8 @@ class ColorMNetClient2:
     def __init__(self, image_size: int = -1, vid_length: int = 1000, enable_resize: bool = False,
                  encode_mode: int = 0, propagate: bool = False, max_memory_frames: int = None,
                  reset_on_ref_update: bool = True, retry_mmsp_threshold: float = -1.0,
-                 retry_perm_share_threshold: float = 0.30, retry_model: int = 0, server_port: int = None):
+                 retry_perm_share_threshold: float = 0.30, retry_model: int = 0, server_port: int = None,
+                 backbone: str = "dinov3"):
         if server_port is None:
             HAVC_LogMessage(MessageType.CRITICAL, "CMNET2 Client(): server port is None")
             return
@@ -54,7 +55,7 @@ class ColorMNetClient2:
                 # Reinitialize the server-side render
                 self.server.initialize(image_size, vid_length, enable_resize, encode_mode, propagate,
                                        max_memory_frames, reset_on_ref_update, retry_mmsp_threshold,
-                                       retry_perm_share_threshold, retry_model)
+                                       retry_perm_share_threshold, retry_model, backbone)
             return
 
         if not self._initialized:
@@ -67,7 +68,7 @@ class ColorMNetClient2:
                 self.server = xmlrpc.client.ServerProxy(uri=self.uri, allow_none=True, use_builtin_types=True)
                 self.server.initialize(image_size, vid_length, enable_resize, encode_mode, propagate,
                                        max_memory_frames, reset_on_ref_update, retry_mmsp_threshold,
-                                       retry_perm_share_threshold, retry_model)
+                                       retry_perm_share_threshold, retry_model, backbone)
                 self._initialized = True
             except Exception as exe:
                 HAVC_LogMessage(MessageType.CRITICAL,
@@ -179,11 +180,11 @@ class ColorMNetClient2:
             shm_in.close();  shm_in.unlink()
             shm_out.close(); shm_out.unlink()
 
-    def preload_reference(self, ref_img: Image):
+    def preload_reference(self, ref_img: Image, frame_idx: int = None):
         shm, h, w = self._shm_write(ref_img)
         try:
             self._safe_remote_call(
-                self.server.PreloadReferenceShm, shm.name, h, w)
+                self.server.PreloadReferenceShm, shm.name, h, w, frame_idx)
         finally:
             shm.close(); shm.unlink()
 

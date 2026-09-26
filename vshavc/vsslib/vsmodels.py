@@ -82,7 +82,7 @@ def vs_colormnet2(clip: vs.VideoNode, clip_ref: vs.VideoNode, clip_sc: vs.VideoN
                   enable_resize: bool = False, frame_propagate: bool = True, render_vivid: bool = True,
                   max_memory_frames: int = 0, encode_mode: int = 0, ref_weight: float = 1.0,
                   sc_framedir: str = None, retry_perm_share_threshold: float = 0.25,
-                  retry_model: int = 0) -> vs.VideoNode:
+                  retry_model: int = 0, backbone: str = "dinov3") -> vs.VideoNode:
     """Colorize a clip using ColorMNet v2 (CMNET2) with a sliding permanent-memory window.
 
     max_memory_frames is interpreted as the sliding window size (DEF_XRF_WINDOW_SIZE by
@@ -103,6 +103,8 @@ def vs_colormnet2(clip: vs.VideoNode, clip_ref: vs.VideoNode, clip_sc: vs.VideoN
                                         Default 0.25.
     :param retry_model:         Model used by the retry path to colorize missing reference frames.
                                      0 = HAVC (DeOldify + DDColor), 1 = DiT fp4, 2 = DiT int4. Default 0.
+    :param backbone:            Key-encoder backbone: 'dinov3' (default, native PyTorch implementation,
+                                requires the dinov3 weights in the local weights dir) or 'dinov2'.
     :return:                   Colourised clip (RGB24).
     """
     # max_memory_frames acts as window_size for the sliding perm_mem; default to DEF_XRF_WINDOW_SIZE
@@ -114,12 +116,12 @@ def vs_colormnet2(clip: vs.VideoNode, clip_ref: vs.VideoNode, clip_sc: vs.VideoN
             return vs_colormnet2_remote(clip, clip_ref, clip_sc, image_size, enable_resize, frame_propagate,
                                         render_vivid, max_memory_frames, ref_weight, sc_framedir,
                                         retry_perm_share_threshold=retry_perm_share_threshold,
-                                        retry_model=retry_model)
+                                        retry_model=retry_model, backbone=backbone)
         case 1:
             return vs_colormnet2_local(clip, clip_ref, clip_sc, image_size, enable_resize, frame_propagate,
                                        render_vivid, max_memory_frames, ref_weight, sc_framedir,
                                        retry_perm_share_threshold=retry_perm_share_threshold,
-                                       retry_model=retry_model)
+                                       retry_model=retry_model, backbone=backbone)
         case _:
             raise vs.Error(f"HAVC_cmnet2: encode_mode must be 0 or 1, got {encode_mode}")
 
@@ -147,7 +149,7 @@ def vs_colormnet2dit(clip: vs.VideoNode, clip_ref: vs.VideoNode,
                      enable_resize: bool = False, frame_propagate: bool = False,
                      render_vivid: bool = False, max_memory_frames: int = 0,
                      encode_mode: int = 0, retry_perm_share_threshold: float = 0.0,
-                     retry_model: int = 0) -> vs.VideoNode:
+                     retry_model: int = 0, backbone: str = "dinov3") -> vs.VideoNode:
     """Colorize a clip using CMNET2-DIT with a sliding permanent-memory window.
 
     DIT variant of vs_colormnet2(): reference frames are treated as B&W and
@@ -186,6 +188,9 @@ def vs_colormnet2dit(clip: vs.VideoNode, clip_ref: vs.VideoNode,
                                              0 = HAVC (DeOldify + DDColor),
                                              1 = DiT fp4,
                                              2 = DiT int4.
+    :param backbone:                    Key-encoder backbone: 'dinov3' (default, native PyTorch
+                                        implementation, requires the dinov3 weights in the local
+                                        weights dir) or 'dinov2'.
     :return:                            Colourised clip (RGB24).
     """
     # Resolve window size: default → DEF_XRF_WINDOW_SIZE, then force even.
@@ -207,14 +212,14 @@ def vs_colormnet2dit(clip: vs.VideoNode, clip_ref: vs.VideoNode,
                 image_size, enable_resize, frame_propagate,
                 render_vivid, max_memory_frames,
                 retry_perm_share_threshold=retry_perm_share_threshold,
-                retry_model=retry_model)
+                retry_model=retry_model, backbone=backbone)
         case 1:
             return vs_colormnet2dit_local(
                 clip, clip_ref, dit_engine,
                 image_size, enable_resize, frame_propagate,
                 render_vivid, max_memory_frames,
                 retry_perm_share_threshold=retry_perm_share_threshold,
-                retry_model=retry_model)
+                retry_model=retry_model, backbone=backbone)
         case _:
             raise vs.Error(f"HAVC_cmnet2dit: encode_mode must be 0 or 1, got {encode_mode}")
 
